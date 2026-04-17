@@ -11,6 +11,7 @@ import { syncCommand } from "./commands/sync.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { listCommand } from "./commands/list.js";
 import { authCommand } from "./commands/auth.js";
+import { updateCommand } from "./commands/update.js";
 
 const program = new Command();
 
@@ -81,5 +82,10 @@ program
   .description("Authenticate with GitHub Copilot (device flow)")
   .option("-f, --force", "Clear existing token and re-authenticate")
   .action(authCommand);
+
+program
+  .command("update")
+  .description("Self-update: git pull, npm install, and rebuild rotunda")
+  .action(updateCommand);
 
 program.parse();

@@ -138,47 +138,47 @@ This ensures you never end up with a half-written state file.
 
 ```
 1. Load manifest + state
-2. Compute changes (three-way diff)
-3. Filter to local-side changes (added/modified/deleted locally)
-4. Skip conflicts (warn user)
-5. Show preview → confirm (or -y to skip)
-6. For each change:
+2. Auto-pull from git remote (git pull --ff-only)
+3. Compute changes (three-way diff)
+4. Filter to local-side changes (added/modified/deleted locally)
+5. Skip conflicts (warn user)
+6. Show preview → confirm (or -y to skip)
+7. For each change:
    - added/modified: copy local file → repo directory
    - deleted: remove file from repo directory
-7. Update state with new hashes
-8. Git commit staged changes
+8. Update state with new hashes
+9. Git commit and push to remote
 ```
 
 ### Pull Flow (repo → local)
 
 ```
 1. Load manifest + state
-2. Compute changes (three-way diff)
-3. Filter to repo-side changes (added/modified/deleted in repo)
-4. Skip conflicts (warn user)
-5. Show preview → confirm (or -y to skip)
-6. For each change:
+2. Auto-pull from git remote (git pull --ff-only)
+3. Compute changes (three-way diff)
+4. Filter to repo-side changes (added/modified/deleted in repo)
+5. Skip conflicts (warn user)
+6. Show preview → confirm (or -y to skip)
+7. For each change:
    - added/modified: copy repo file → local directory
    - deleted: remove local file + clean empty parent dirs
-7. Update state with new hashes
+8. Update state with new hashes
+9. Git commit state changes and push to remote
 ```
 
 ### Sync Flow (bidirectional)
 
 ```
 1. Load manifest + state
-2. Compute changes (three-way diff)
-3. Partition changes:
+2. Auto-pull from git remote (git pull --ff-only)
+3. Compute changes (three-way diff)
+4. Partition changes:
    - Local-only → push to repo (automatic)
    - Repo-only → pull to local (automatic)
-   - Conflicts → LLM-assisted resolution
-4. For conflicts:
-   - Build conflict prompt with both diffs
-   - LLM analyzes overlap
-   - Present options: accept local, accept repo, merge, skip
+   - Conflicts → interactive resolution (keep local, keep repo, or skip)
 5. Apply all decisions
 6. Update state
-7. Git commit
+7. Git commit and push to remote
 ```
 
 ## LLM Integration
@@ -278,13 +278,15 @@ Rotunda uses git as a transport mechanism — your dotfiles repo is a regular gi
 
 | Operation          | Git commands used                                    |
 |--------------------|------------------------------------------------------|
+| Auto-pull          | `git pull --ff-only`                                 |
 | Health checks      | `git rev-parse --is-inside-work-tree`, `git status`  |
-| Push commit        | `git add <paths>`, `git commit -m <message>`         |
+| Commit and push    | `git add <paths>`, `git commit -m <message>`, `git push` |
 | Diff display       | `git diff --no-index -- <file1> <file2>`             |
 
 **Key design decisions:**
 
-- **No `git push`**: Rotunda creates local commits but does not push to the remote. You control when to `git push`.
+- **Automatic git pull**: All sync commands (`push`, `pull`, `sync`) automatically run `git pull --ff-only` before computing changes, ensuring you're working against the latest remote state. If the pull fails (e.g., no remote configured, diverged history), the command warns and continues.
+- **Automatic git push**: After applying changes and updating state, rotunda commits and pushes to the remote automatically. No manual `git push` needed.
 - **`git diff --no-index`**: Used for diffing because the local files are outside the repo. The `--no-index` flag compares arbitrary files without requiring them to be in a git repository.
 - **Exit code handling**: `git diff --no-index` exits with code 1 when files differ (not an error). Rotunda handles this in the git utility layer.
 
@@ -297,23 +299,30 @@ src/
 │   ├── init.ts         # rotunda init — manifest creation + initial state
 │   ├── status.ts       # rotunda status — three-way diff display
 │   ├── diff.ts         # rotunda diff — file-level diff output
+│   ├── describe.ts     # rotunda describe — LLM-powered diff analysis
 │   ├── push.ts         # rotunda push — local → repo sync
 │   ├── pull.ts         # rotunda pull — repo → local sync
-│   ├── sync.ts         # rotunda sync — bidirectional (placeholder)
+│   ├── sync.ts         # rotunda sync — bidirectional sync
 │   ├── doctor.ts       # rotunda doctor — 10 health checks
-│   └── auth.ts         # rotunda auth — GitHub device flow (placeholder)
+│   ├── list.ts         # rotunda list — file inventory display
+│   ├── auth.ts         # rotunda auth — GitHub device flow
+│   └── update.ts       # rotunda update — self-update from source
 ├── core/
 │   ├── types.ts        # TypeScript interfaces (Manifest, FileChange, SyncState, etc.)
 │   ├── manifest.ts     # Manifest loader with Zod validation
 │   ├── state.ts        # State read/write with atomic saves
 │   └── engine.ts       # File discovery, hashing, three-way diff
-├── display/            # (Future) Terminal display utilities
+├── display/            # Terminal display utilities
 ├── llm/
-│   └── prompts.ts      # LLM prompt templates (explain, reshape, conflict)
+│   ├── auth.ts         # Copilot token management
+│   ├── copilot.ts      # Copilot API client
+│   ├── prompts.ts      # LLM prompt templates (explain, reshape, conflict)
+│   └── review.ts       # LLM-assisted file review flow
 └── utils/
-    ├── git.ts          # Git command wrappers
+    ├── git.ts          # Git command wrappers (pull, commit, push, diff, status)
     ├── glob.ts         # Glob pattern matching (minimatch wrapper)
-    └── hash.ts         # SHA-256 file hashing
+    ├── hash.ts         # SHA-256 file hashing
+    └── lock.ts         # File-based lock for concurrent operation prevention
 ```
 
 ### Module Responsibilities

@@ -212,6 +212,7 @@ rotunda list
 | `rotunda doctor [--fix]` | Structural health check; `--fix` uses LLM to suggest and apply repairs |
 | `rotunda list [--local] [--repo]` | Show manifest roots and what files are actually captured |
 | `rotunda auth [--force]` | Authenticate with GitHub Copilot (device flow) |
+| `rotunda update` | Self-update: git pull, npm install, and rebuild rotunda |
 
 ### Diff Options
 
@@ -275,22 +276,20 @@ rotunda sync -y    # Sync all non-conflicting changes without review
 # You modified a Claude skill locally
 rotunda status          # See what changed
 rotunda diff claude     # Review the diff
-rotunda push            # Copilot explains each change, you approve → committed to repo
-git push                # Push to remote
+rotunda push            # Copilot explains each change, you approve → committed and pushed
 ```
 
 ### Second machine: pull changes
 
 ```bash
 cd ~/my-dotfiles
-git pull                # Get latest from remote
-rotunda pull            # Apply repo changes to local directories
+rotunda pull            # Auto-pulls from remote, applies repo changes to local
 ```
 
 ### Both machines changed: sync
 
 ```bash
-rotunda sync            # Detects changes on both sides
+rotunda sync            # Auto-pulls from remote, detects changes on both sides
                         # Non-conflicting changes sync automatically
                         # Conflicts are surfaced for LLM-assisted resolution
 ```
@@ -303,8 +302,14 @@ git clone https://github.com/you/my-dotfiles.git
 cd my-dotfiles
 npm install -g rotunda   # or npm link from source
 rotunda init             # Creates state from existing files
-rotunda pull -y          # Pull everything from repo to local
+rotunda pull -y          # Auto-pulls from remote and applies everything to local
 # Done — all your AI agent configs are in place
+```
+
+### Self-update
+
+```bash
+rotunda update           # Pulls latest source, installs deps, rebuilds
 ```
 
 ---

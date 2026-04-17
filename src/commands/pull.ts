@@ -5,6 +5,7 @@ import { computeAllChanges } from "../core/engine.js";
 import { loadToken } from "../llm/auth.js";
 import { reviewChanges } from "../llm/review.js";
 import { withLock } from "../utils/lock.js";
+import { isGitRepo, gitPull, gitCommitAndPush } from "../utils/git.js";
 import { copyFile, mkdir, rm, access, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { createInterface } from "node:readline";
@@ -41,6 +42,18 @@ export async function pullCommand(options: { yes?: boolean }): Promise<void> {
   }
 
   await withLock(cwd, "pull", async () => {
+  // Pull latest from remote before computing changes
+  if (await isGitRepo(cwd)) {
+    try {
+      const pulled = await gitPull(cwd);
+      if (pulled) {
+        console.log(chalk.dim("  ↓ Pulled latest from remote."));
+      }
+    } catch {
+      console.log(chalk.yellow("  ⚠ git pull failed — continuing with local state."));
+    }
+  }
+
   const state = await loadState(cwd);
   const allChanges = await computeAllChanges(manifest, cwd, state);
 
@@ -161,6 +174,18 @@ export async function pullCommand(options: { yes?: boolean }): Promise<void> {
 
   // Save state
   await saveState(cwd, updatedState);
+
+  // Git commit and push state changes
+  if (await isGitRepo(cwd)) {
+    const commitMsg = `rotunda pull — ${approved.length} file(s)`;
+    try {
+      await gitCommitAndPush(cwd, [".rotunda"], commitMsg, true);
+      console.log(chalk.green(`  ✓ Committed and pushed: "${commitMsg}"`));
+    } catch {
+      console.log(chalk.yellow("\n  ⚠ State saved but git commit/push failed. Commit manually."));
+    }
+  }
+
   console.log(chalk.green(`\n  ✓ Pull complete. ${approved.length} file(s) applied.`));
   }); // end withLock
 }

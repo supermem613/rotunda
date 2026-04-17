@@ -2,7 +2,7 @@ import chalk from "chalk";
 import { loadManifest } from "../core/manifest.js";
 import { loadState, saveState, updateStateFiles, removeFromState } from "../core/state.js";
 import { computeAllChanges } from "../core/engine.js";
-import { gitCommitAndPush } from "../utils/git.js";
+import { gitCommitAndPush, isGitRepo, gitPull } from "../utils/git.js";
 import { withLock } from "../utils/lock.js";
 import { loadToken } from "../llm/auth.js";
 import { reviewChanges } from "../llm/review.js";
@@ -33,6 +33,17 @@ export async function pushCommand(options: { yes?: boolean }): Promise<void> {
   }
 
   await withLock(cwd, "push", async () => {
+  // Pull latest from remote before computing changes
+  if (await isGitRepo(cwd)) {
+    try {
+      const pulled = await gitPull(cwd);
+      if (pulled) {
+        console.log(chalk.dim("  ↓ Pulled latest from remote."));
+      }
+    } catch {
+      console.log(chalk.yellow("  ⚠ git pull failed — continuing with local state."));
+    }
+  }
 
   const state = await loadState(cwd);
   const allChanges = await computeAllChanges(manifest, cwd, state);
@@ -157,8 +168,8 @@ export async function pushCommand(options: { yes?: boolean }): Promise<void> {
       ? `rotunda push — ${approved.length} file(s) (${reshapeCount} reshaped)`
       : `rotunda push — ${approved.length} file(s)`;
     try {
-      await gitCommitAndPush(cwd, [".rotunda", ...gitPaths], commitMsg, false);
-      console.log(chalk.green(`\n  ✓ Committed: "${commitMsg}"`));
+      await gitCommitAndPush(cwd, [".rotunda", ...gitPaths], commitMsg, true);
+      console.log(chalk.green(`\n  ✓ Committed and pushed: "${commitMsg}"`));
     } catch (err) {
       console.log(chalk.yellow("\n  ⚠ Changes applied but git commit failed. Commit manually."));
     }

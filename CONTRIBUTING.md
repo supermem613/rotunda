@@ -57,16 +57,23 @@ npm run test:integration
 test/
 ├── unit/                   # Fast, isolated tests
 │   ├── engine.test.ts      # Three-way diff algorithm
+│   ├── git.test.ts         # Git utilities (pull, status, commit, diff)
 │   ├── glob.test.ts        # Include/exclude pattern matching
 │   ├── hash.test.ts        # SHA-256 hashing
+│   ├── lock.test.ts        # File-based locking
 │   ├── manifest.test.ts    # Manifest loading and validation
 │   ├── prompts.test.ts     # LLM prompt construction
+│   ├── rootname.test.ts    # Root name resolution
+│   ├── auth.test.ts        # Authentication module
 │   └── state.test.ts       # State management
-├── integration/            # Tests that touch the filesystem
+├── integration/            # Tests that touch the filesystem and run CLI
+│   ├── push-pull.test.ts   # Push/pull/conflict engine integration
+│   ├── scenarios.test.ts   # End-to-end scenario data
+│   └── auto-pull.test.ts   # Auto git-pull, commit+push, CLI integration
 └── scenarios/              # End-to-end scenario data
 ```
 
-Unit tests should be fast and not touch the filesystem. Integration tests create temporary directories and test real file operations.
+Unit tests should be fast and not touch the filesystem. Integration tests create temporary directories and test real file operations. The auto-pull integration tests run the CLI as a subprocess against real git repos.
 
 ### Writing Tests
 
@@ -91,11 +98,14 @@ src/
 │   ├── init.ts
 │   ├── status.ts
 │   ├── diff.ts
+│   ├── describe.ts
 │   ├── push.ts
 │   ├── pull.ts
 │   ├── sync.ts
 │   ├── doctor.ts
-│   └── auth.ts
+│   ├── list.ts
+│   ├── auth.ts
+│   └── update.ts
 ├── core/               # Core logic (no CLI dependencies)
 │   ├── types.ts        # Shared TypeScript interfaces
 │   ├── manifest.ts     # Manifest loading + Zod validation
@@ -103,11 +113,15 @@ src/
 │   └── engine.ts       # File discovery, hashing, three-way diff
 ├── display/            # Terminal display utilities
 ├── llm/                # LLM integration
-│   └── prompts.ts      # Prompt templates for Copilot API
+│   ├── auth.ts         # Copilot token management
+│   ├── copilot.ts      # Copilot API client
+│   ├── prompts.ts      # Prompt templates for Copilot API
+│   └── review.ts       # LLM-assisted file review flow
 └── utils/              # Shared utilities
-    ├── git.ts          # Git command wrappers
+    ├── git.ts          # Git command wrappers (pull, commit, push, diff, status)
     ├── glob.ts         # Glob matching (minimatch)
-    └── hash.ts         # SHA-256 hashing
+    ├── hash.ts         # SHA-256 hashing
+    └── lock.ts         # File-based lock for concurrent operation prevention
 ```
 
 See the [Architecture Guide](docs/architecture.md) for detailed module responsibilities.

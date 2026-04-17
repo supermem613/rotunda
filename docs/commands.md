@@ -1,6 +1,6 @@
 # Command Reference
 
-Rotunda provides nine commands for initializing, inspecting, syncing, and maintaining your configuration files. All commands are run from the root of your dotfiles repository (the directory containing `rotunda.json`).
+Rotunda provides ten commands for initializing, inspecting, syncing, and maintaining your configuration files. All commands are run from the root of your dotfiles repository (the directory containing `rotunda.json`).
 
 ```
 rotunda <command> [options]
@@ -19,6 +19,7 @@ rotunda <command> [options]
 | `rotunda doctor`   | Structural health check (with `--fix` for LLM repair)|
 | `rotunda list`     | Show manifest roots and captured files               |
 | `rotunda auth`     | Authenticate with GitHub Copilot                     |
+| `rotunda update`   | Self-update: git pull, npm install, rebuild           |
 
 ---
 
@@ -211,14 +212,15 @@ rotunda push [-y | --yes]
 
 **What it does:**
 
-1. Computes changes where the local side has modified, added, or deleted files.
-2. Shows a preview of all changes that will be pushed.
-3. Lists any conflicts separately (conflicts are **skipped** — use `rotunda sync` to resolve them).
-4. Prompts for confirmation (unless `-y` is passed).
-5. Copies local files → repo for additions and modifications.
-6. Deletes files from repo for local deletions.
-7. Updates the sync state.
-8. Creates a git commit with the staged changes.
+1. Automatically pulls the latest changes from the git remote (`git pull --ff-only`).
+2. Computes changes where the local side has modified, added, or deleted files.
+3. Shows a preview of all changes that will be pushed.
+4. Lists any conflicts separately (conflicts are **skipped** — use `rotunda sync` to resolve them).
+5. Prompts for confirmation (unless `-y` is passed).
+6. Copies local files → repo for additions and modifications.
+7. Deletes files from repo for local deletions.
+8. Updates the sync state.
+9. Creates a git commit and pushes to the remote.
 
 **Output example:**
 
@@ -237,7 +239,7 @@ rotunda push [-y | --yes]
   ✓ claude/CLAUDE.md
   ✗ claude/hooks/old-hook.ts (removed from repo)
 
-  ✓ Committed: "rotunda push — 3 file(s)"
+  ✓ Committed and pushed: "rotunda push — 3 file(s)"
   ✓ Push complete.
 ```
 
@@ -247,7 +249,7 @@ Files that changed on both sides are not pushed. Rotunda warns you and directs y
 
 **Git integration:**
 
-After copying files, rotunda stages the changed paths and `.rotunda/` state directory, then creates a commit with the message `rotunda push — N file(s)`. The commit is local — rotunda does not `git push` to the remote by default.
+After copying files, rotunda stages the changed paths and `.rotunda/` state directory, then creates a commit with the message `rotunda push — N file(s)` and pushes it to the remote. All three sync commands (`push`, `pull`, `sync`) automatically run `git pull --ff-only` before computing changes to ensure you're working against the latest remote state.
 
 ---
 
@@ -269,17 +271,21 @@ rotunda pull [-y | --yes]
 
 **What it does:**
 
-1. Computes changes where the repo side has modified, added, or deleted files.
-2. Shows a preview of all changes that will be pulled.
-3. Lists any conflicts separately (conflicts are **skipped**).
-4. Prompts for confirmation (unless `-y` is passed).
-5. Copies repo files → local for additions and modifications.
-6. Deletes files from local for repo deletions (**orphan cleanup**).
-7. Updates the sync state.
+1. Automatically pulls the latest changes from the git remote (`git pull --ff-only`).
+2. Computes changes where the repo side has modified, added, or deleted files.
+3. Shows a preview of all changes that will be pulled.
+4. Lists any conflicts separately (conflicts are **skipped**).
+5. Prompts for confirmation (unless `-y` is passed).
+6. Copies repo files → local for additions and modifications.
+7. Deletes files from local for repo deletions (**orphan cleanup**).
+8. Updates the sync state.
+9. Creates a git commit for state changes and pushes to the remote.
 
 **Output example:**
 
 ```
+  ↓ Pulled latest from remote.
+
   Changes to pull (repo → local):
 
     added     copilot/extensions/new-ext/manifest.json
@@ -324,21 +330,22 @@ rotunda sync [-y | --yes]
 
 Combines push and pull into a single operation:
 
-1. Computes all changes across all roots.
-2. Applies non-conflicting changes automatically:
+1. Automatically pulls the latest changes from the git remote (`git pull --ff-only`).
+2. Computes all changes across all roots.
+3. Applies non-conflicting changes automatically:
    - Local-only changes → pushed to repo
    - Repo-only changes → pulled to local
-3. For **conflicts** (files changed on both sides), invokes the LLM review flow:
-   - Shows diffs from both sides
-   - Asks the LLM to analyze whether the changes overlap
-   - Presents options: accept local, accept repo, merge, or skip
+4. For **conflicts** (files changed on both sides), presents interactive resolution:
+   - Keep local version
+   - Keep repo version
+   - Skip (leave unresolved)
+5. Updates the sync state.
+6. Creates a git commit for all repo-side changes and pushes to the remote.
 
 **When to use:**
 
 - After working on multiple machines and wanting to reconcile all changes in one step.
 - When `rotunda status` shows conflicts that `push` and `pull` skip.
-
-> **Note:** `rotunda sync` is currently a placeholder and not yet fully implemented. Use `rotunda push` and `rotunda pull` for non-conflicting changes.
 
 ---
 
@@ -547,6 +554,48 @@ See the [Authentication Guide](auth.md) for the complete walkthrough.
 
 ---
 
+## `rotunda update`
+
+Self-update rotunda from source.
+
+**Synopsis:**
+
+```
+rotunda update
+```
+
+**What it does:**
+
+1. Resolves the rotunda installation directory from the running binary.
+2. Runs `git pull --ff-only` to fetch the latest source.
+3. Runs `npm install` to update dependencies.
+4. Runs `npm run build` to recompile.
+
+**Output example:**
+
+```
+  Rotunda repo: /home/user/rotunda
+
+  ↓ Pulling latest...
+    ✓ Pulled new changes.
+
+  ⬡ Installing dependencies...
+    ✓ Dependencies installed.
+
+  🔨 Building...
+    ✓ Build complete.
+
+  ✓ Rotunda updated successfully.
+```
+
+**Notes:**
+
+- Requires that rotunda was installed from a git clone (not npm).
+- Uses `--ff-only` for the pull — if the local branch has diverged, the update will fail with a clear error.
+- Each step (pull, install, build) fails independently with a descriptive message.
+
+---
+
 ## Common Workflows
 
 ### Daily Sync
@@ -555,13 +604,13 @@ The most common workflow when working across machines:
 
 ```bash
 cd ~/dotfiles               # Navigate to your dotfiles repo
-git pull                    # Get latest changes from remote
-rotunda status              # See what changed
+rotunda status              # See what changed (auto-pulls from remote)
 rotunda pull -y             # Apply repo changes to local
 # ... work on your machine, edit configs ...
-rotunda push -y             # Push local changes to repo
-git push                    # Share with other machines
+rotunda push -y             # Push local changes to repo (auto-commits and pushes)
 ```
+
+No manual `git pull` or `git push` needed — rotunda handles git operations automatically.
 
 ### New Machine Setup
 
@@ -584,9 +633,7 @@ After Claude or Copilot modifies your local configuration:
 cd ~/dotfiles
 rotunda status              # See what the agent changed
 rotunda diff claude         # Review the specific changes
-rotunda push                # Push with review (confirm each change)
-git add -A && git commit    # Or just commit directly
-git push
+rotunda push                # Push with review — auto-commits and pushes to remote
 ```
 
 ### Checking Health

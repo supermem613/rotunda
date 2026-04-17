@@ -3,6 +3,7 @@ import { loadManifest } from "../core/manifest.js";
 import { loadState, saveState, updateStateFiles, removeFromState } from "../core/state.js";
 import { computeAllChanges } from "../core/engine.js";
 import { withLock } from "../utils/lock.js";
+import { isGitRepo, gitPull, gitCommitAndPush } from "../utils/git.js";
 import { copyFile, mkdir, rm, access } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { createInterface } from "node:readline";
@@ -45,6 +46,18 @@ export async function syncCommand(options: { yes?: boolean }): Promise<void> {
   }
 
   await withLock(cwd, "sync", async () => {
+  // Pull latest from remote before computing changes
+  if (await isGitRepo(cwd)) {
+    try {
+      const pulled = await gitPull(cwd);
+      if (pulled) {
+        console.log(chalk.dim("  ↓ Pulled latest from remote."));
+      }
+    } catch {
+      console.log(chalk.yellow("  ⚠ git pull failed — continuing with local state."));
+    }
+  }
+
   const state = await loadState(cwd);
   const allChanges = await computeAllChanges(manifest, cwd, state);
 
@@ -97,6 +110,7 @@ export async function syncCommand(options: { yes?: boolean }): Promise<void> {
 
   // Apply non-conflicting changes
   let updatedState = { ...state, files: { ...state.files } };
+  const gitPaths: string[] = [];
 
   for (const c of autoApply) {
     const rootDef = manifest.roots.find((r) => r.repo === c.rootName);
@@ -110,11 +124,13 @@ export async function syncCommand(options: { yes?: boolean }): Promise<void> {
       if (c.action === "added" || c.action === "modified") {
         await mkdir(dirname(repoFile), { recursive: true });
         await copyFile(localFile, repoFile);
+        gitPaths.push(join(rootDef.repo, c.relativePath));
         const synced = new Map([[c.relativePath, c.localHash!]]);
         updatedState = updateStateFiles(updatedState, rootDef.repo, synced);
         console.log(chalk.green("  → ✓") + ` ${c.rootName}/${c.relativePath}`);
       } else if (c.action === "deleted") {
         await rm(repoFile, { recursive: true, force: true }).catch(() => {});
+        gitPaths.push(join(rootDef.repo, c.relativePath));
         updatedState = removeFromState(updatedState, rootDef.repo, [c.relativePath]);
         console.log(chalk.red("  → ✗") + ` ${c.rootName}/${c.relativePath} ${chalk.dim("(removed from repo)")}`);
       }
@@ -158,10 +174,12 @@ export async function syncCommand(options: { yes?: boolean }): Promise<void> {
         if (await fileExists(localFile)) {
           await mkdir(dirname(repoFile), { recursive: true });
           await copyFile(localFile, repoFile);
+          gitPaths.push(join(rootDef.repo, c.relativePath));
           const synced = new Map([[c.relativePath, c.localHash!]]);
           updatedState = updateStateFiles(updatedState, rootDef.repo, synced);
         } else {
           await rm(repoFile, { recursive: true, force: true }).catch(() => {});
+          gitPaths.push(join(rootDef.repo, c.relativePath));
           updatedState = removeFromState(updatedState, rootDef.repo, [c.relativePath]);
         }
         console.log(chalk.green("    ✓") + " Kept local version");
@@ -185,6 +203,19 @@ export async function syncCommand(options: { yes?: boolean }): Promise<void> {
 
   // Save state
   await saveState(cwd, updatedState);
-  console.log(chalk.green(`\n  ✓ Sync complete.`));
+
+  // Git commit and push
+  if (await isGitRepo(cwd)) {
+    const totalApplied = autoApply.length;
+    const commitMsg = `rotunda sync — ${totalApplied} file(s)`;
+    try {
+      await gitCommitAndPush(cwd, [".rotunda", ...gitPaths], commitMsg, true);
+      console.log(chalk.green(`  ✓ Committed and pushed: "${commitMsg}"`));
+    } catch {
+      console.log(chalk.yellow("\n  ⚠ Changes applied but git commit/push failed. Commit manually."));
+    }
+  }
+
+  console.log(chalk.green(`  ✓ Sync complete.`));
   }); // end withLock
 }
