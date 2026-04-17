@@ -4,6 +4,7 @@ import { Command } from "commander";
 import { initCommand } from "./commands/init.js";
 import { statusCommand } from "./commands/status.js";
 import { diffCommand } from "./commands/diff.js";
+import { describeCommand } from "./commands/describe.js";
 import { pushCommand } from "./commands/push.js";
 import { pullCommand } from "./commands/pull.js";
 import { syncCommand } from "./commands/sync.js";
@@ -39,6 +40,12 @@ program
   .action(diffCommand);
 
 program
+  .command("describe")
+  .description("Show diffs with LLM-powered analysis (per-file, per-chunk breakdown)")
+  .argument("[root]", "Filter to a specific sync root")
+  .action(describeCommand);
+
+program
   .command("push")
   .description("Push local changes to repo with LLM-assisted review")
   .option("-y, --yes", "Push all changes without review")
@@ -72,6 +79,7 @@ program
 program
   .command("auth")
   .description("Authenticate with GitHub Copilot (device flow)")
+  .option("-f, --force", "Clear existing token and re-authenticate")
   .action(authCommand);
 
 program.parse();

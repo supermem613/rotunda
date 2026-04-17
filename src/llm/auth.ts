@@ -7,13 +7,17 @@
  */
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 // The GitHub App client_id used by the official Copilot integrations
 const COPILOT_CLIENT_ID = "Iv1.b507a08c87ecfe98";
 const DEVICE_CODE_URL = "https://github.com/login/device/code";
+
+/** Shared integration identity — used in both token exchange and API calls. */
+export const COPILOT_EDITOR_VERSION = "rotunda/0.1.0";
+export const COPILOT_INTEGRATION_ID = "vscode-chat";
 const ACCESS_TOKEN_URL = "https://github.com/login/oauth/access_token";
 const COPILOT_TOKEN_URL = "https://api.github.com/copilot_internal/v2/token";
 
@@ -55,6 +59,17 @@ function loadAuth(): StoredAuth | null {
 function saveAuth(auth: StoredAuth): void {
   mkdirSync(ROTUNDA_DIR, { recursive: true });
   writeFileSync(AUTH_FILE, JSON.stringify(auth, null, 2) + "\n");
+}
+
+/** Remove the stored auth file so the next auth flow starts fresh. */
+export function clearToken(): void {
+  try {
+    if (existsSync(AUTH_FILE)) {
+      unlinkSync(AUTH_FILE);
+    }
+  } catch {
+    /* already gone */
+  }
 }
 
 // ─── Public API ──────────────────────────────────────────────────────
@@ -99,6 +114,8 @@ async function exchangeCopilotToken(auth: StoredAuth): Promise<string> {
     headers: {
       Authorization: `token ${auth.oauthToken}`,
       Accept: "application/json",
+      "Editor-Version": COPILOT_EDITOR_VERSION,
+      "Copilot-Integration-Id": COPILOT_INTEGRATION_ID,
     },
   });
 

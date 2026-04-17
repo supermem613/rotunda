@@ -1,5 +1,5 @@
 /**
- * LLM prompt templates for the push/pull review flow.
+ * LLM prompt templates for review, reshape, and describe flows.
  */
 
 import type { FileChange } from "../core/types.js";
@@ -7,6 +7,20 @@ import type { FileChange } from "../core/types.js";
 interface PromptPair {
   system: string;
   user: string;
+}
+
+// ─── Describe types ──────────────────────────────────────────
+
+/** Input to `buildDescribePrompt` — one entry per changed file. */
+export interface DescribeFileInput {
+  path: string;
+  root: string;
+  action: string;
+  side: string;
+  /** Plain (uncolored) unified diff for modified/conflict files. */
+  diff: string;
+  /** Full file content for added/deleted files (may be null). */
+  content: string | null;
 }
 
 export function buildExplainPrompt(
@@ -95,6 +109,54 @@ export function buildConflictPrompt(
     `Changes in the repo since last sync:\n\`\`\`diff\n${repoDiff}\n\`\`\`\n\n` +
     `Changes locally since last sync:\n\`\`\`diff\n${localDiff}\n\`\`\`\n\n` +
     `Please analyze whether these changes overlap and suggest how to merge them.`;
+
+  return { system, user };
+}
+
+export function buildDescribePrompt(files: DescribeFileInput[]): PromptPair {
+  const system =
+    "You are a senior developer analyzing configuration file changes for a sync tool. " +
+    "The user wants to understand what changed across all files.\n\n" +
+    "Respond with a JSON object (no markdown fences, no explanation outside the JSON) matching this schema:\n" +
+    "{\n" +
+    '  "overview": "2-3 sentences summarizing the overall theme and impact of all changes",\n' +
+    '  "files": [\n' +
+    "    {\n" +
+    '      "path": "relative/path",\n' +
+    '      "root": "root-name",\n' +
+    '      "action": "added|modified|deleted|conflict",\n' +
+    '      "summary": "1-2 sentence summary of what changed in this file",\n' +
+    '      "chunks": [\n' +
+    '        { "header": "@@ line range or short label", "description": "What this chunk does and why it matters" }\n' +
+    "      ],\n" +
+    '      "observations": ["optional noteworthy things: patterns, risks, suggestions"]\n' +
+    "    }\n" +
+    "  ]\n" +
+    "}\n\n" +
+    "Rules:\n" +
+    "- For added/deleted files with no diff hunks, use a single chunk with header 'entire file'.\n" +
+    "- Keep descriptions factual and concise.\n" +
+    "- observations is optional — only include when genuinely useful.\n" +
+    "- Output ONLY the JSON object. No surrounding text.";
+
+  const parts: string[] = [];
+  for (const f of files) {
+    let entry = `File: ${f.root}/${f.path}\nAction: ${f.action} (${f.side})`;
+    if (f.diff) {
+      entry += `\nDiff:\n\`\`\`diff\n${f.diff}\n\`\`\``;
+    }
+    if (f.content != null) {
+      const truncated = f.content.length > 3000
+        ? f.content.slice(0, 3000) + "\n... (truncated)"
+        : f.content;
+      entry += `\nContent:\n\`\`\`\n${truncated}\n\`\`\``;
+    }
+    parts.push(entry);
+  }
+
+  const user =
+    `Analyze these ${files.length} changed file(s):\n\n` +
+    parts.join("\n\n---\n\n");
 
   return { system, user };
 }

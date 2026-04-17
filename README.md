@@ -205,12 +205,13 @@ rotunda list
 | `rotunda init` | Initialize `rotunda.json` and state in the current repo |
 | `rotunda status` | Show what changed since last sync |
 | `rotunda diff [root]` | Show file-level diffs for modified files |
+| `rotunda describe [root]` | Show diffs with LLM-powered per-file, per-chunk analysis |
 | `rotunda push [-y]` | Push local changes to repo (with LLM review) |
 | `rotunda pull [-y]` | Pull repo changes to local (with LLM review) |
 | `rotunda sync [-y]` | Bidirectional sync with conflict resolution |
 | `rotunda doctor [--fix]` | Structural health check; `--fix` uses LLM to suggest and apply repairs |
 | `rotunda list [--local] [--repo]` | Show manifest roots and what files are actually captured |
-| `rotunda auth` | Authenticate with GitHub Copilot (device flow) |
+| `rotunda auth [--force]` | Authenticate with GitHub Copilot (device flow) |
 
 ### Diff Options
 
@@ -222,6 +223,39 @@ rotunda diff --name-only  # Just list changed file paths
 rotunda diff --open       # Open each changed file in VS Code diff viewer
 rotunda diff --html       # Generate interactive HTML diff report
 ```
+
+### Describe (LLM Analysis)
+
+```bash
+rotunda describe          # Full diff + LLM-powered breakdown
+rotunda describe claude   # Describe only the "claude" root
+```
+
+Output is two phases: the raw diff (identical to `rotunda diff`), followed by a structured analysis:
+
+```
+  ──────────────────────────────────────────────────────────────
+    🤖 Analysis  powered by GitHub Copilot
+  ──────────────────────────────────────────────────────────────
+
+  📋 Overview
+
+  Two configuration files updated to add SQL injection
+  detection and improve hook performance.
+
+  📁 claude / skills/pr-review/SKILL.md  modified
+  │
+  │  Added regex pattern for SQL injection detection in
+  │  string interpolation contexts.
+  │
+  ├─ @@ -12,6 +12,8 @@
+  │  New regex pattern catches backtick-interpolated SQL
+  │  strings, complementing the existing XSS checks.
+  │
+  └─ 💡 Consider adding a test case for parameterized queries
+```
+
+Requires authentication (`rotunda auth`). Uses GitHub Copilot to analyze changes.
 
 ### Push/Pull Flags
 

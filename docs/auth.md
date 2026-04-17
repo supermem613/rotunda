@@ -84,10 +84,10 @@ This file contains:
 **Solution:**
 
 ```bash
-rotunda auth
+rotunda auth --force
 ```
 
-Re-running `rotunda auth` generates a fresh token pair.
+Re-running with `--force` clears the existing token and starts a fresh device flow.
 
 ### Rate Limits
 
@@ -135,6 +135,7 @@ All core sync operations work without authentication. LLM-assisted review is an 
 | `rotunda push` (interactive review) | Yes |
 | `rotunda pull` (interactive review) | Yes |
 | `rotunda sync` (conflict resolution) | Yes |
+| `rotunda describe [root]` | Yes           |
 | `rotunda doctor`         | No             |
 
 When authentication is not configured, rotunda falls back to basic review mode:

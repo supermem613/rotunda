@@ -528,16 +528,22 @@ Authenticate with GitHub Copilot for LLM-assisted review.
 **Synopsis:**
 
 ```
-rotunda auth
+rotunda auth [--force]
 ```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `-f, --force` | Clear existing token and re-authenticate from scratch |
 
 **What it does:**
 
-Initiates a [GitHub device flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow) to obtain a Copilot API token for the LLM review features used during push, pull, and sync.
+Initiates a [GitHub device flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow) to obtain a Copilot API token for the LLM review features used during push, pull, sync, and describe.
+
+If a valid token already exists, `rotunda auth` exits early with a success message. Use `--force` to clear the existing token and start a fresh device flow — useful when tokens are corrupted or you need to switch GitHub accounts.
 
 See the [Authentication Guide](auth.md) for the complete walkthrough.
-
-> **Note:** `rotunda auth` is currently a placeholder. Authentication will be required for LLM-assisted review features in a future release.
 
 ---
 

@@ -4,6 +4,7 @@ import {
   buildExplainPrompt,
   buildReshapePrompt,
   buildConflictPrompt,
+  buildDescribePrompt,
 } from "../../src/llm/prompts.js";
 import type { FileChange } from "../../src/core/types.js";
 
@@ -83,5 +84,51 @@ describe("buildConflictPrompt", () => {
 
     assert.ok(user.includes(repoDiff), "should include the repo diff");
     assert.ok(user.includes(localDiff), "should include the local diff");
+  });
+});
+
+describe("buildDescribePrompt", () => {
+  it("produces a system prompt requesting JSON output", () => {
+    const files = [
+      { path: "hooks/pre-commit.json", root: "claude", action: "modified", side: "local", diff: "-old\n+new", content: null },
+    ];
+    const { system } = buildDescribePrompt(files);
+
+    assert.ok(system.includes("JSON"), "should request JSON output");
+    assert.ok(system.includes("overview"), "should mention overview field");
+    assert.ok(system.includes("chunks"), "should mention chunks field");
+  });
+
+  it("includes all files in the user prompt", () => {
+    const files = [
+      { path: "skills/commit/SKILL.md", root: "claude", action: "added", side: "local", diff: "", content: "# Commit skill" },
+      { path: "hooks/pre-commit.json", root: "claude", action: "modified", side: "local", diff: "-old\n+new", content: null },
+    ];
+    const { user } = buildDescribePrompt(files);
+
+    assert.ok(user.includes("skills/commit/SKILL.md"), "should include first file path");
+    assert.ok(user.includes("hooks/pre-commit.json"), "should include second file path");
+    assert.ok(user.includes("2 changed file(s)"), "should state the file count");
+  });
+
+  it("truncates large file content to 3000 chars", () => {
+    const bigContent = "x".repeat(5000);
+    const files = [
+      { path: "big.md", root: "claude", action: "added", side: "local", diff: "", content: bigContent },
+    ];
+    const { user } = buildDescribePrompt(files);
+
+    assert.ok(user.includes("(truncated)"), "should indicate truncation");
+    assert.ok(!user.includes("x".repeat(5000)), "should not include full content");
+  });
+
+  it("includes diff content for modified files", () => {
+    const diff = "-removed line\n+added line";
+    const files = [
+      { path: "config.json", root: "dotfiles", action: "modified", side: "local", diff, content: null },
+    ];
+    const { user } = buildDescribePrompt(files);
+
+    assert.ok(user.includes(diff), "should include the diff");
   });
 });

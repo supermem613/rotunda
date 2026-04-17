@@ -4,6 +4,7 @@
  */
 
 import type { AuthToken } from "./auth.js";
+import { COPILOT_EDITOR_VERSION, COPILOT_INTEGRATION_ID } from "./auth.js";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -38,8 +39,8 @@ export async function chatCompletion(
     headers: {
       "Authorization": `Bearer ${token.github_token}`,
       "Content-Type": "application/json",
-      "Editor-Version": "rotunda/0.1.0",
-      "Copilot-Integration-Id": "rotunda",
+      "Editor-Version": COPILOT_EDITOR_VERSION,
+      "Copilot-Integration-Id": COPILOT_INTEGRATION_ID,
     },
     body,
   });
