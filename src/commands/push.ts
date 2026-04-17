@@ -111,7 +111,7 @@ export async function pushCommand(options: { yes?: boolean }): Promise<void> {
   const gitPaths: string[] = [];
 
   for (const c of approved) {
-    const rootDef = manifest.roots.find((r) => r.name === c.rootName);
+    const rootDef = manifest.roots.find((r) => r.repo === c.rootName);
     if (!rootDef) continue;
 
     const localFile = join(rootDef.local, c.relativePath);

@@ -99,7 +99,7 @@ export async function syncCommand(options: { yes?: boolean }): Promise<void> {
   let updatedState = { ...state, files: { ...state.files } };
 
   for (const c of autoApply) {
-    const rootDef = manifest.roots.find((r) => r.name === c.rootName);
+    const rootDef = manifest.roots.find((r) => r.repo === c.rootName);
     if (!rootDef) continue;
 
     const localFile = join(rootDef.local, c.relativePath);
@@ -141,7 +141,7 @@ export async function syncCommand(options: { yes?: boolean }): Promise<void> {
     console.log(chalk.magenta("\n  Resolving conflicts:\n"));
 
     for (const c of conflicts) {
-      const rootDef = manifest.roots.find((r) => r.name === c.rootName);
+      const rootDef = manifest.roots.find((r) => r.repo === c.rootName);
       if (!rootDef) continue;
 
       const localFile = join(rootDef.local, c.relativePath);

@@ -115,7 +115,7 @@ export async function pullCommand(options: { yes?: boolean }): Promise<void> {
   let updatedState = { ...state, files: { ...state.files } };
 
   for (const c of approved) {
-    const rootDef = manifest.roots.find((r) => r.name === c.rootName);
+    const rootDef = manifest.roots.find((r) => r.repo === c.rootName);
     if (!rootDef) continue;
 
     const localFile = join(rootDef.local, c.relativePath);

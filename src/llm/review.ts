@@ -48,7 +48,7 @@ export async function reviewChanges(
 
   for (let i = 0; i < changes.length; i++) {
     const change = changes[i];
-    const rootDef = manifest.roots.find((r) => r.name === change.rootName);
+    const rootDef = manifest.roots.find((r) => r.repo === change.rootName);
     if (!rootDef) continue;
 
     const localFile = join(rootDef.local, change.relativePath);

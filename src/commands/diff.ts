@@ -27,9 +27,9 @@ export async function diffCommand(
   const state = await loadState(cwd);
   let changes = await computeAllChanges(manifest, cwd, state);
 
-  // Filter by root if specified
+  // Filter by root if specified (accepts either root name or repo path)
   if (root) {
-    changes = changes.filter((c) => c.rootName === root);
+    changes = changes.filter((c) => c.rootName === root || manifest.roots.some((r) => r.name === root && r.repo === c.rootName));
     if (changes.length === 0) {
       console.log(chalk.green("✓") + ` No changes in root '${root}'.`);
       return;
@@ -60,7 +60,7 @@ export async function diffCommand(
   // --open: open in VS Code
   if (options.open) {
     for (const c of changes) {
-      const rootDef = manifest.roots.find((r) => r.name === c.rootName);
+      const rootDef = manifest.roots.find((r) => r.repo === c.rootName);
       if (!rootDef) continue;
       const localFile = join(rootDef.local, c.relativePath);
       const repoFile = join(cwd, rootDef.repo, c.relativePath);
@@ -86,7 +86,7 @@ export async function diffCommand(
   for (const [rootName, rootChanges] of byRoot) {
     console.log(chalk.bold(`\n── ${rootName} ${"─".repeat(Math.max(0, 55 - rootName.length))}`));
 
-    const rootDef = manifest.roots.find((r) => r.name === rootName);
+    const rootDef = manifest.roots.find((r) => r.repo === rootName);
     if (!rootDef) continue;
 
     for (const c of rootChanges) {
