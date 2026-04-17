@@ -32,12 +32,15 @@ export async function git(
 }
 
 /**
- * Check if a directory is a git repository.
+ * Check if a directory is the root of a git repository
+ * (has its own .git, not merely nested inside another repo).
  */
 export async function isGitRepo(dir: string): Promise<boolean> {
   try {
-    await git(["rev-parse", "--is-inside-work-tree"], dir);
-    return true;
+    const { stdout } = await git(["rev-parse", "--show-toplevel"], dir);
+    const toplevel = stdout.trim().replace(/\\/g, "/");
+    const normalised = dir.replace(/\\/g, "/");
+    return toplevel === normalised;
   } catch {
     return false;
   }

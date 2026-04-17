@@ -24,6 +24,8 @@ export interface ChatCompletionResponse {
 export interface ChatCompletionOptions {
   /** Override the default max_tokens for the response. */
   maxResponseTokens?: number;
+  /** Abort the request after this many milliseconds. */
+  timeoutMs?: number;
 }
 
 /**
@@ -57,16 +59,30 @@ export async function chatCompletion(
     max_tokens: options?.maxResponseTokens ?? 4096,
   });
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${token.github_token}`,
-      "Content-Type": "application/json",
-      "Editor-Version": COPILOT_EDITOR_VERSION,
-      "Copilot-Integration-Id": COPILOT_INTEGRATION_ID,
-    },
-    body,
-  });
+  // Optional per-call timeout via AbortController
+  const controller = options?.timeoutMs
+    ? new AbortController()
+    : undefined;
+  const timer = controller
+    ? setTimeout(() => controller.abort(), options!.timeoutMs)
+    : undefined;
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token.github_token}`,
+        "Content-Type": "application/json",
+        "Editor-Version": COPILOT_EDITOR_VERSION,
+        "Copilot-Integration-Id": COPILOT_INTEGRATION_ID,
+      },
+      body,
+      signal: controller?.signal,
+    });
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "unknown error");
@@ -93,6 +109,11 @@ export async function chatCompletion(
   };
 }
 
+export interface AskResult {
+  content: string;
+  finishReason: string;
+}
+
 /**
  * Send a simple prompt and get a response.
  */
@@ -101,14 +122,14 @@ export async function ask(
   systemPrompt: string,
   userPrompt: string,
   options?: ChatCompletionOptions,
-): Promise<string> {
+): Promise<AskResult> {
   const messages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
     { role: "user", content: userPrompt },
   ];
 
   const result = await chatCompletion(token, messages, options);
-  return result.content;
+  return { content: result.content, finishReason: result.finishReason };
 }
 
 /**

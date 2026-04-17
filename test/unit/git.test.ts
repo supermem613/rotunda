@@ -63,6 +63,14 @@ describe("isGitRepo", () => {
   it("returns false for a nonexistent directory", async () => {
     assert.equal(await isGitRepo(join(TMP, "does-not-exist")), false);
   });
+
+  it("returns false for a subdirectory nested inside another git repo", async () => {
+    const outer = join(TMP, "outer-repo");
+    initGitRepo(outer);
+    const inner = join(outer, "subdir", "deep");
+    mkdirSync(inner, { recursive: true });
+    assert.equal(await isGitRepo(inner), false);
+  });
 });
 
 // --- gitPull ---

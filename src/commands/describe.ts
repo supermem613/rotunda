@@ -12,14 +12,16 @@ import { join } from "node:path";
 import { readFile } from "node:fs/promises";
 import { loadToken } from "../llm/auth.js";
 import { ask } from "../llm/copilot.js";
+import type { AskResult } from "../llm/copilot.js";
 import {
   buildDescribePrompt,
   estimateDescribeFileTokens,
   getDescribeSystemTokens,
 } from "../llm/prompts.js";
 import type { DescribeFileInput } from "../llm/prompts.js";
-import type { FileChange } from "../core/types.js";
-import { TokenOverflowError, MAX_PROMPT_TOKENS } from "../llm/tokens.js";
+import { MAX_PROMPT_TOKENS } from "../llm/tokens.js";
+import { createProgress } from "../utils/progress.js";
+import type { Progress } from "../utils/progress.js";
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -46,7 +48,7 @@ async function readFileContent(path: string): Promise<string | null> {
 }
 
 /** Robustly extract JSON from an LLM response that may include fences. */
-function parseAnalysis(raw: string): DescribeAnalysis {
+export function parseAnalysis(raw: string): DescribeAnalysis {
   try { return JSON.parse(raw); } catch { /* continue */ }
 
   const fenceMatch = raw.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
@@ -64,7 +66,7 @@ function parseAnalysis(raw: string): DescribeAnalysis {
 }
 
 /** Word-wrap text to a given width. */
-function wrapText(text: string, width: number): string[] {
+export function wrapText(text: string, width: number): string[] {
   const words = text.split(/\s+/);
   const lines: string[] = [];
   let current = "";
@@ -188,79 +190,51 @@ export async function describeCommand(
     return;
   }
 
-  // ── Phase 1: Raw diff ─────────────────────────────────────
+  // ── Gather file data for LLM ──────────────────────────────
 
   const fileInfos: DescribeFileInput[] = [];
-  const byRoot = new Map<string, FileChange[]>();
+
   for (const c of changes) {
-    const group = byRoot.get(c.rootName) ?? [];
-    group.push(c);
-    byRoot.set(c.rootName, group);
-  }
-
-  console.log(chalk.bold(`\n${"─".repeat(60)}`));
-  console.log(chalk.bold("  Diff"));
-  console.log(chalk.bold(`${"─".repeat(60)}`));
-
-  for (const [rootName, rootChanges] of byRoot) {
-    console.log(
-      chalk.bold(
-        `\n── ${rootName} ${"─".repeat(Math.max(0, 55 - rootName.length))}`
-      )
-    );
-
-    const rootDef = manifest.roots.find((r) => r.repo === rootName);
+    const rootDef = manifest.roots.find((r) => r.repo === c.rootName);
     if (!rootDef) continue;
 
-    for (const c of rootChanges) {
-      const localFile = join(rootDef.local, c.relativePath);
-      const repoFile  = join(cwd, rootDef.repo, c.relativePath);
+    const localFile = join(rootDef.local, c.relativePath);
+    const repoFile  = join(cwd, rootDef.repo, c.relativePath);
 
-      if (c.action === "modified" || c.action === "conflict") {
-        try {
-          const colorDiff = await gitDiffFiles(repoFile, localFile, true);
-          if (colorDiff) console.log(colorDiff);
-        } catch {
-          console.log(chalk.dim(`  (could not diff ${c.relativePath})`));
-        }
-      } else if (c.action === "added") {
-        const label = c.side === "local" ? "added locally" : "added in repo";
-        console.log(chalk.green(`  + ${c.relativePath} (${label})`));
-      } else if (c.action === "deleted") {
-        const label = c.side === "local" ? "deleted locally" : "deleted in repo";
-        console.log(chalk.red(`  - ${c.relativePath} (${label})`));
-      }
-
-      let plainDiff = "";
-      if (c.action === "modified" || c.action === "conflict") {
-        try {
-          plainDiff = await gitDiffFiles(repoFile, localFile, false);
-        } catch { /* diff unavailable */ }
-      }
-
-      let content: string | null = null;
-      if (c.action === "added") {
-        content = await readFileContent(
-          c.side === "local" ? localFile : repoFile
-        );
-      } else if (c.action === "deleted") {
-        content = await readFileContent(
-          c.side === "local" ? repoFile : localFile
-        );
-      }
-
-      fileInfos.push({
-        path: c.relativePath,
-        root: c.rootName,
-        action: c.action,
-        side: c.side,
-        diff: plainDiff,
-        content,
-      });
+    let plainDiff = "";
+    if (c.action === "modified" || c.action === "conflict") {
+      try {
+        plainDiff = await gitDiffFiles(repoFile, localFile, false);
+      } catch { /* diff unavailable */ }
     }
+
+    let content: string | null = null;
+    if (c.action === "added") {
+      content = await readFileContent(
+        c.side === "local" ? localFile : repoFile
+      );
+    } else if (c.action === "deleted") {
+      content = await readFileContent(
+        c.side === "local" ? repoFile : localFile
+      );
+    }
+
+    fileInfos.push({
+      path: c.relativePath,
+      root: c.rootName,
+      action: c.action,
+      side: c.side,
+      diff: plainDiff,
+      content,
+    });
   }
 
-  // ── Phase 2: LLM analysis ─────────────────────────────────
+  // ── LLM analysis ──────────────────────────────────────────
+
+  if (fileInfos.length === 0) {
+    console.log(chalk.green("✓") + " No changes to describe.");
+    return;
+  }
 
   console.log(chalk.bold(`\n${"─".repeat(60)}`));
   console.log(
@@ -280,6 +254,17 @@ export async function describeCommand(
   console.log();
 }
 
+// ─── Constants ───────────────────────────────────────────────
+
+/** Per-file response token budget — enough for summary + chunks + observations. */
+const RESPONSE_TOKENS_PER_FILE = 150;
+/** Minimum response token budget for any API call. */
+const MIN_RESPONSE_TOKENS = 4096;
+/** Maximum response token budget (model ceiling). */
+const MAX_RESPONSE_TOKENS = 16384;
+/** Timeout for a single Copilot API call. */
+const API_TIMEOUT_MS = 90_000;
+
 // ─── Adaptive batching ──────────────────────────────────────
 
 /**
@@ -295,82 +280,162 @@ function estimateRawDescribeTokens(files: DescribeFileInput[]): number {
   );
 }
 
+/** Compute a response-token budget scaled to the number of files. */
+export function responseTokenBudget(fileCount: number): number {
+  return Math.min(
+    MAX_RESPONSE_TOKENS,
+    Math.max(MIN_RESPONSE_TOKENS, fileCount * RESPONSE_TOKENS_PER_FILE),
+  );
+}
+
+/**
+ * Send a single describe batch to the API with timeout and
+ * truncation detection.  Returns null if the response was
+ * truncated (finish_reason === "length") so callers can retry
+ * with smaller batches.
+ */
+async function sendDescribeBatch(
+  token: Awaited<ReturnType<typeof loadToken>> & {},
+  batch: DescribeFileInput[],
+  progress?: Progress,
+): Promise<DescribeAnalysis | null> {
+  const { system, user } = buildDescribePrompt(batch);
+  const result: AskResult = await ask(token, system, user, {
+    maxResponseTokens: responseTokenBudget(batch.length),
+    timeoutMs: API_TIMEOUT_MS,
+  });
+
+  if (result.finishReason === "length") return null;
+  progress?.tick(batch.length);
+  return parseAnalysis(result.content);
+}
+
 /**
  * Analyze files with adaptive batching:
- *   1. If the raw content fits in one call → send everything (no truncation).
- *   2. If not → split into batches using raw sizes so each batch
- *      gets more per-file budget and less truncation.
- *   3. If a single file still overflows → send it alone (truncation
- *      only kicks in here, as a last resort).
+ *   1. If the raw content fits in one call → send everything.
+ *   2. If not → split into batches so each batch gets more per-file budget.
+ *   3. On timeout or truncation → split the failing batch smaller.
+ *   4. If a single file still fails → skip it gracefully.
  */
 async function analyzeWithBatching(
   token: Awaited<ReturnType<typeof loadToken>> & {},
   fileInfos: DescribeFileInput[],
 ): Promise<DescribeAnalysis> {
   const rawTokens = estimateRawDescribeTokens(fileInfos);
+  const progress = createProgress(fileInfos.length);
 
   // ── Fast path: everything fits without truncation ──────────
   if (rawTokens <= MAX_PROMPT_TOKENS) {
-    const { system, user } = buildDescribePrompt(fileInfos);
-    const response = await ask(token, system, user);
-    return parseAnalysis(response);
+    const result = await sendDescribeBatch(token, fileInfos, progress);
+    if (result) {
+      progress.done();
+      return result;
+    }
+    // Truncated — fall through to batching
   }
 
   // ── Slow path: batch by raw size ───────────────────────────
-  console.log(
-    chalk.dim(
-      `  (Large changeset ~${Math.round(rawTokens / 1000)}K tokens — analyzing in batches…)\n`,
-    )
-  );
-
   const batches = splitIntoBatches(fileInfos);
   const merged: DescribeAnalysis = { overview: "", files: [] };
   const overviews: string[] = [];
 
-  for (let i = 0; i < batches.length; i++) {
-    const batch = batches[i];
-    console.log(
-      chalk.dim(`  Batch ${i + 1}/${batches.length} (${batch.length} file(s))…`)
-    );
-
+  for (const batch of batches) {
     try {
-      const { system, user } = buildDescribePrompt(batch);
-      const response = await ask(token, system, user);
-      const partial = parseAnalysis(response);
-      overviews.push(partial.overview);
-      merged.files.push(...partial.files);
-    } catch (err) {
-      // Single-file fallback: truncation is the last resort
-      if (err instanceof TokenOverflowError && batch.length > 1) {
-        for (const file of batch) {
-          try {
-            const { system, user } = buildDescribePrompt([file]);
-            const response = await ask(token, system, user);
-            const single = parseAnalysis(response);
-            overviews.push(single.overview);
-            merged.files.push(...single.files);
-          } catch {
-            merged.files.push({
-              path: file.path,
-              root: file.root,
-              action: file.action,
-              summary: "(analysis skipped — content too large)",
-              chunks: [],
-            });
+      const result = await sendDescribeBatch(token, batch, progress);
+
+      if (result) {
+        overviews.push(result.overview);
+        merged.files.push(...result.files);
+        continue;
+      }
+
+      // Truncated response — split this batch smaller
+      if (batch.length > 1) {
+        const mid = Math.ceil(batch.length / 2);
+        for (const half of [batch.slice(0, mid), batch.slice(mid)]) {
+          const sub = await sendDescribeBatch(token, half, progress);
+          if (sub) {
+            overviews.push(sub.overview);
+            merged.files.push(...sub.files);
+          } else {
+            await analyzeFilesIndividually(token, half, overviews, merged, progress);
           }
         }
       } else {
-        throw err;
+        // Single file truncated — accept best-effort parse
+        const { system, user } = buildDescribePrompt(batch);
+        const raw = await ask(token, system, user, {
+          maxResponseTokens: MAX_RESPONSE_TOKENS,
+          timeoutMs: API_TIMEOUT_MS,
+        });
+        const parsed = parseAnalysis(raw.content);
+        overviews.push(parsed.overview);
+        merged.files.push(...parsed.files);
+        progress.tick(1);
+      }
+    } catch (err) {
+      // Timeout or API error — try splitting the batch
+      if (batch.length > 1) {
+        await analyzeFilesIndividually(token, batch, overviews, merged, progress);
+      } else {
+        merged.files.push({
+          path: batch[0].path,
+          root: batch[0].root,
+          action: batch[0].action,
+          summary: "(analysis skipped — request failed)",
+          chunks: [],
+        });
+        progress.tick(1);
       }
     }
   }
 
-  // Combine overviews
+  progress.done();
+
   merged.overview = overviews.length === 1
     ? overviews[0]
-    : overviews.map((o, i) => `[Batch ${i + 1}] ${o}`).join(" ");
+    : overviews.join(" ");
 
   return merged;
+}
+
+/** Fallback: analyze each file individually, skipping failures. */
+async function analyzeFilesIndividually(
+  token: Awaited<ReturnType<typeof loadToken>> & {},
+  files: DescribeFileInput[],
+  overviews: string[],
+  merged: DescribeAnalysis,
+  progress: Progress,
+): Promise<void> {
+  for (const file of files) {
+    try {
+      const result = await sendDescribeBatch(token, [file], progress);
+      if (result) {
+        overviews.push(result.overview);
+        merged.files.push(...result.files);
+      } else {
+        // Truncated single file — best-effort
+        const { system, user } = buildDescribePrompt([file]);
+        const raw = await ask(token, system, user, {
+          maxResponseTokens: MAX_RESPONSE_TOKENS,
+          timeoutMs: API_TIMEOUT_MS,
+        });
+        const parsed = parseAnalysis(raw.content);
+        overviews.push(parsed.overview);
+        merged.files.push(...parsed.files);
+        progress.tick(1);
+      }
+    } catch {
+      merged.files.push({
+        path: file.path,
+        root: file.root,
+        action: file.action,
+        summary: "(analysis skipped — content too large)",
+        chunks: [],
+      });
+      progress.tick(1);
+    }
+  }
 }
 
 /**
@@ -378,7 +443,7 @@ async function analyzeWithBatching(
  * Greedy packing: keeps adding files until the next one would push
  * the batch over the token budget, then starts a new batch.
  */
-function splitIntoBatches(files: DescribeFileInput[]): DescribeFileInput[][] {
+export function splitIntoBatches(files: DescribeFileInput[]): DescribeFileInput[][] {
   const systemOverhead = getDescribeSystemTokens();
   const budget = MAX_PROMPT_TOKENS;
 

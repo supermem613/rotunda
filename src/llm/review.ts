@@ -85,7 +85,7 @@ export async function reviewChanges(
     // Get LLM explanation
     try {
       const { system, user } = buildExplainPrompt(change, repoContent, localContent, diff);
-      const explanation = await ask(token, system, user);
+      const { content: explanation } = await ask(token, system, user);
       console.log(`\n  ${chalk.cyan("📝 Copilot Summary:")}`);
       // Indent each line of the explanation
       for (const line of explanation.split("\n")) {

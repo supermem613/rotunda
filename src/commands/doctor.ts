@@ -545,7 +545,7 @@ export async function doctorCommand(options: { fix?: boolean }): Promise<void> {
     try {
       const systemPrompt = buildDoctorFixSystemPrompt();
       const userPrompt = buildDoctorFixUserPrompt(checks, repoPath, manifest);
-      const response = await ask(token, systemPrompt, userPrompt);
+      const { content: response } = await ask(token, systemPrompt, userPrompt);
 
       let fixes: FixAction[];
       try {
