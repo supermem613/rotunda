@@ -1,6 +1,8 @@
 /**
- * `rotunda describe` — show raw diffs then an LLM-generated
- * hierarchical analysis (overview → files → chunks → observations).
+ * `rotunda describe` — LLM-generated hierarchical analysis of changes
+ * (overview → files → chunks → observations).
+ *
+ * For raw diffs, use `rotunda diff`.
  */
 
 import chalk from "chalk";
@@ -25,7 +27,7 @@ import type { Progress } from "../utils/progress.js";
 
 // ─── Types ───────────────────────────────────────────────────
 
-interface DescribeAnalysis {
+export interface DescribeAnalysis {
   overview: string;
   files: Array<{
     path: string;

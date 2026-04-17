@@ -59,54 +59,67 @@ export async function chatCompletion(
     max_tokens: options?.maxResponseTokens ?? 4096,
   });
 
-  // Optional per-call timeout via AbortController
-  const controller = options?.timeoutMs
-    ? new AbortController()
-    : undefined;
-  const timer = controller
-    ? setTimeout(() => controller.abort(), options!.timeoutMs)
-    : undefined;
+  const timeoutMs = options?.timeoutMs;
+  const controller = timeoutMs ? new AbortController() : undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
 
-  let response: Response;
   try {
-    response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${token.github_token}`,
-        "Content-Type": "application/json",
-        "Editor-Version": COPILOT_EDITOR_VERSION,
-        "Copilot-Integration-Id": COPILOT_INTEGRATION_ID,
-      },
-      body,
-      signal: controller?.signal,
+    const operation = (async (): Promise<ChatCompletionResponse> => {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token.github_token}`,
+          "Content-Type": "application/json",
+          "Editor-Version": COPILOT_EDITOR_VERSION,
+          "Copilot-Integration-Id": COPILOT_INTEGRATION_ID,
+        },
+        body,
+        signal: controller?.signal,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "unknown error");
+        throw new Error(
+          `Copilot API error (${response.status}): ${errorText}`
+        );
+      }
+
+      const data = await response.json() as {
+        choices?: Array<{
+          message?: { content?: string };
+          finish_reason?: string;
+        }>;
+      };
+
+      const choice = data.choices?.[0];
+      if (!choice?.message?.content) {
+        throw new Error("Empty response from Copilot API");
+      }
+
+      return {
+        content: choice.message.content,
+        finishReason: choice.finish_reason ?? "stop",
+      };
+    })();
+
+    if (!timeoutMs) return operation;
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        controller?.abort();
+        reject(new Error(`Copilot API timeout after ${timeoutMs}ms`));
+      }, timeoutMs);
     });
+
+    return await Promise.race([operation, timeoutPromise]);
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError" && timeoutMs) {
+      throw new Error(`Copilot API timeout after ${timeoutMs}ms`);
+    }
+    throw error;
   } finally {
     if (timer) clearTimeout(timer);
   }
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => "unknown error");
-    throw new Error(
-      `Copilot API error (${response.status}): ${errorText}`
-    );
-  }
-
-  const data = await response.json() as {
-    choices?: Array<{
-      message?: { content?: string };
-      finish_reason?: string;
-    }>;
-  };
-
-  const choice = data.choices?.[0];
-  if (!choice?.message?.content) {
-    throw new Error("Empty response from Copilot API");
-  }
-
-  return {
-    content: choice.message.content,
-    finishReason: choice.finish_reason ?? "stop",
-  };
 }
 
 export interface AskResult {
