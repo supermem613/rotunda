@@ -1,16 +1,11 @@
 import chalk from "chalk";
-import { execFile } from "node:child_process";
+import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { git, isGitRepo } from "../utils/git.js";
 
-const execFileAsync = promisify(execFile);
-
-// On Windows, npm is a .cmd batch file that requires shell execution.
-// Pass the full command as a single string to avoid DEP0190.
-const isWindows = process.platform === "win32";
-const npmCmd = isWindows ? "npm.cmd" : "npm";
+const execAsync = promisify(exec);
 
 export async function updateCommand(): Promise<void> {
   // Resolve the rotunda repo root from this file's location (dist/commands/update.js → repo root)
@@ -43,7 +38,7 @@ export async function updateCommand(): Promise<void> {
   // 2. npm install
   console.log(chalk.bold("\n  ⬡ Installing dependencies..."));
   try {
-    await execFileAsync(npmCmd, ["install", "--no-audit", "--no-fund"], {
+    await execAsync("npm install --no-audit --no-fund", {
       cwd: repoRoot,
     });
     console.log(chalk.green("    ✓ Dependencies installed."));
@@ -56,7 +51,7 @@ export async function updateCommand(): Promise<void> {
   // 3. npm run build
   console.log(chalk.bold("\n  🔨 Building..."));
   try {
-    await execFileAsync(npmCmd, ["run", "build"], {
+    await execAsync("npm run build", {
       cwd: repoRoot,
     });
     console.log(chalk.green("    ✓ Build complete."));
