@@ -13,7 +13,7 @@
   <a href="#quick-start">Quick Start</a> •
   <a href="#features">Features</a> •
   <a href="#commands">Commands</a> •
-  <a href="#how-it-works">How It Works</a> •
+  <a href="#run-from-anywhere">Run From Anywhere</a> •
   <a href="#configuration">Configuration</a>
 </p>
 
@@ -86,8 +86,13 @@ This creates:
 - **`rotunda.json`** — manifest with sensible defaults for `~/.claude` and `~/.copilot`
 - **`.rotunda/`** — state directory (gitignored) tracking file hashes per machine
 - **`.gitignore`** — updated to exclude `.rotunda/`
+- **`~/.rotunda.json`** — global config that **binds** rotunda to this repo, so every other command works from any directory
+
+> If you've already bound a different repo, `init` will warn and skip the bind step. Use `rotunda bind` to switch.
 
 ### 5. See what's out there
+
+From **anywhere** on your machine:
 
 ```bash
 rotunda status
@@ -202,17 +207,21 @@ rotunda list
 
 | Command | Description |
 |---------|-------------|
-| `rotunda init` | Initialize `rotunda.json` and state in the current repo |
-| `rotunda status` | Show what changed since last sync |
-| `rotunda diff [root]` | Show file-level diffs for modified files |
-| `rotunda describe [root]` | LLM-powered per-file, per-chunk change analysis for modified files |
-| `rotunda push [-y]` | Push local changes to repo (with LLM review) |
-| `rotunda pull [-y]` | Pull repo changes to local (with LLM review) |
-| `rotunda sync [-y]` | Bidirectional sync with conflict resolution |
-| `rotunda doctor [--fix]` | Structural health check; `--fix` uses LLM to suggest and apply repairs |
-| `rotunda list [--local] [--repo]` | Show manifest roots and what files are actually captured |
 | `rotunda auth [--force]` | Authenticate with GitHub Copilot (device flow) |
+| `rotunda bind [path]` | Bind rotunda to a dotfiles repo (defaults to cwd). `--show` prints current binding, `--unset` clears it |
+| `rotunda cd` | Spawn a subshell whose working directory is the bound dotfiles repo |
+| `rotunda describe [root]` | LLM-powered per-file, per-chunk change analysis for modified files |
+| `rotunda diff [root]` | Show file-level diffs for modified files |
+| `rotunda doctor [--fix]` | Structural health check; `--fix` uses LLM to suggest and apply repairs |
+| `rotunda home` | Spawn a subshell whose working directory is the rotunda source repo |
+| `rotunda init` | Initialize `rotunda.json` and state in the current repo, and bind it |
+| `rotunda list [--local] [--repo]` | Show manifest roots and what files are actually captured |
+| `rotunda pull [-y]` | Pull repo changes to local (with LLM review) |
+| `rotunda push [-y]` | Push local changes to repo (with LLM review) |
+| `rotunda status` | Show what changed since last sync |
+| `rotunda sync [-y]` | Bidirectional sync with conflict resolution |
 | `rotunda update` | Self-update: git pull, npm install, and rebuild rotunda |
+| `rotunda where` | Print the absolute path of the bound dotfiles repo |
 
 ### Diff Options
 
@@ -272,6 +281,8 @@ rotunda sync -y    # Sync all non-conflicting changes without review
 
 ## 🔄 Typical Workflow
 
+> All `rotunda` commands below work from **any directory**. After `rotunda init`, the binding in `~/.rotunda.json` tells rotunda which repo to operate on.
+
 ### Single machine: edit and push
 
 ```bash
@@ -284,7 +295,6 @@ rotunda push            # Copilot explains each change, you approve → committe
 ### Second machine: pull changes
 
 ```bash
-cd ~/my-dotfiles
 rotunda pull            # Auto-pulls from remote, applies repo changes to local
 ```
 
@@ -300,12 +310,12 @@ rotunda sync            # Auto-pulls from remote, detects changes on both sides
 
 ```bash
 # On a fresh machine
-git clone https://github.com/you/my-dotfiles.git
-cd my-dotfiles
+git clone https://github.com/you/my-dotfiles.git ~/my-dotfiles
+cd ~/my-dotfiles
 npm install -g rotunda   # or npm link from source
-rotunda init             # Creates state from existing files
+rotunda init             # Creates state AND binds rotunda to this repo
 rotunda pull -y          # Auto-pulls from remote and applies everything to local
-# Done — all your AI agent configs are in place
+# Done — all your AI agent configs are in place, and you can `rotunda cd` from anywhere
 ```
 
 ### Self-update
@@ -315,6 +325,98 @@ rotunda update           # Pulls latest source, installs deps, rebuilds
 ```
 
 ---
+
+## 📍 Run From Anywhere
+
+Rotunda binds itself to **one dotfiles repo per machine** so every command works from any directory.
+
+### How binding works
+
+- `rotunda init` writes the bound repo path into `~/.rotunda.json` (a global config file in your home directory).
+- All subsequent commands — `status`, `push`, `pull`, `sync`, `diff`, `describe`, `list`, `doctor` — read that path and operate on the bound repo, regardless of your current working directory.
+- There is **no environment variable** and **no walk-up-the-tree discovery**. The global config is the single source of truth. This keeps behavior predictable across shells, terminals, IDEs, and CI.
+
+### `~/.rotunda.json`
+
+```jsonc
+{
+  "version": 1,
+  "dotfilesRepo": "C:/Users/you/repos/dotfiles"
+}
+```
+
+You can edit this by hand, but `rotunda bind` is easier:
+
+```bash
+rotunda bind                  # bind to current directory
+rotunda bind ~/repos/dotfiles # bind to an explicit path (~ is expanded)
+rotunda bind --show           # print the currently bound path
+rotunda bind --unset          # forget the binding
+```
+
+`bind` validates that the target directory contains a `rotunda.json` before writing, so you can't accidentally bind to a non-rotunda repo.
+
+### Jumping into the repo
+
+Because a child process can't change its parent shell's working directory, `rotunda cd` **spawns a subshell** rooted at the bound repo (the same trick `chezmoi cd` uses):
+
+```bash
+$ pwd
+/some/random/dir
+$ rotunda cd
+# new shell starts, cwd is your dotfiles repo
+$ pwd
+/home/you/repos/dotfiles
+$ exit       # back to the original shell, original cwd
+```
+
+On Windows the subshell is `pwsh` if available, otherwise `powershell`, otherwise `cmd.exe`. On Unix it's `$SHELL`. (`rotunda cd` and `rotunda home` first try to detect the shell that launched rotunda and re-use it.)
+
+### Hacking on rotunda itself
+
+If you want to jump into the **rotunda source repo** (not your dotfiles), use `rotunda home`:
+
+```bash
+$ rotunda home
+# new shell starts, cwd is the rotunda source repo
+$ pwd
+/home/you/repos/rotunda
+$ exit       # back to where you were
+```
+
+`home` works the same way as `cd`, just rooted at the rotunda install (resolved from the `rotunda` binary's location, following any `npm link` symlinks).
+
+### Moving the repo
+
+If you move your dotfiles repo, the binding goes stale:
+
+```bash
+mv ~/repos/dotfiles ~/code/dotfiles
+rotunda status        # error: bound path no longer exists
+rotunda bind ~/code/dotfiles
+rotunda status        # works again
+```
+
+`rotunda doctor` checks the binding first and will tell you exactly what's wrong (missing config, missing path, missing `rotunda.json`, etc.) and what command to run to fix it.
+
+### Multiple machines, one repo
+
+The global config is **per-machine**. Each machine binds independently — you can have the repo at `~/dotfiles` on one box and `D:\code\dotfiles` on another without coordination.
+
+### Multiple GitHub remotes (optional)
+
+If you publish the same dotfiles repo to two GitHub accounts (e.g., personal + work for Codespaces), configure dual-push on the single clone:
+
+```bash
+git remote set-url --add --push origin https://you@github.com/you/dotfiles.git
+git remote set-url --add --push origin https://you-work@github.com/you-work/dotfiles.git
+git config credential.https://github.com.useHttpPath true
+```
+
+Now `git push` updates both. Rotunda doesn't know or care — it operates on the local clone.
+
+---
+
 
 ## ⚙️ Configuration
 

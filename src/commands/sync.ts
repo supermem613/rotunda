@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { loadManifest } from "../core/manifest.js";
+import { loadRepoContext } from "../core/repo-context.js";
 import { loadState, saveState, updateStateFiles, removeFromState } from "../core/state.js";
 import { computeAllChanges } from "../core/engine.js";
 import { withLock } from "../utils/lock.js";
@@ -35,15 +35,7 @@ async function fileExists(path: string): Promise<boolean> {
 }
 
 export async function syncCommand(options: { yes?: boolean }): Promise<void> {
-  const cwd = process.cwd();
-
-  let manifest;
-  try {
-    manifest = loadManifest(cwd);
-  } catch {
-    console.error(chalk.red("Error:") + " Could not load rotunda.json. Run `rotunda init` first.");
-    process.exit(1);
-  }
+  const { cwd, manifest } = loadRepoContext();
 
   await withLock(cwd, "sync", async () => {
   // Pull latest from remote before computing changes

@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { loadManifest } from "../core/manifest.js";
+import { loadRepoContext } from "../core/repo-context.js";
 import { loadState } from "../core/state.js";
 import { computeAllChanges } from "../core/engine.js";
 import { gitDiffFiles } from "../utils/git.js";
@@ -14,15 +14,7 @@ export async function diffCommand(
   root: string | undefined,
   options: { stat?: boolean; nameOnly?: boolean; open?: boolean; html?: boolean }
 ): Promise<void> {
-  const cwd = process.cwd();
-
-  let manifest;
-  try {
-    manifest = loadManifest(cwd);
-  } catch {
-    console.error(chalk.red("Error:") + " Could not load rotunda.json. Run `rotunda init` first.");
-    process.exit(1);
-  }
+  const { cwd, manifest } = loadRepoContext();
 
   const state = await loadState(cwd);
   let changes = await computeAllChanges(manifest, cwd, state);

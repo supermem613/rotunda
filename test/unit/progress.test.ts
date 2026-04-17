@@ -17,7 +17,7 @@ describe("createProgress", () => {
   });
 
   afterEach(() => {
-    process.stderr.isTTY = originalIsTTY;
+    (process.stderr as { isTTY?: boolean }).isTTY = originalIsTTY;
     mock.restoreAll();
   });
 

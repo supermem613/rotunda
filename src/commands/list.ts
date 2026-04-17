@@ -1,18 +1,10 @@
 import chalk from "chalk";
 import { join } from "node:path";
-import { loadManifest } from "../core/manifest.js";
+import { loadRepoContext } from "../core/repo-context.js";
 import { discoverFiles } from "../core/engine.js";
 
 export async function listCommand(options: { local?: boolean; repo?: boolean }): Promise<void> {
-  const cwd = process.cwd();
-
-  let manifest;
-  try {
-    manifest = loadManifest(cwd);
-  } catch {
-    console.error(chalk.red("Error:") + " Could not load rotunda.json. Run `rotunda init` first.");
-    process.exit(1);
-  }
+  const { cwd, manifest } = loadRepoContext();
 
   const showLocal = !options.repo || options.local;  // default: show both
   const showRepo = !options.local || options.repo;

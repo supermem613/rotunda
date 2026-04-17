@@ -2,6 +2,7 @@ import { writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import chalk from "chalk";
 import { loadManifest } from "../core/manifest.js";
+import { loadGlobalConfig, saveGlobalConfig, getGlobalConfigPath } from "../core/config.js";
 import { loadState, saveState, getStateDir } from "../core/state.js";
 import { discoverFiles, hashFiles } from "../core/engine.js";
 
@@ -180,5 +181,30 @@ export async function initCommand(): Promise<void> {
   }
 
   console.log(chalk.green("\n✓ Rotunda initialized."));
+
+  // ── Bind the dotfiles repo ──────────────────────────────────────
+  // Init's job is bootstrap → it should leave the user able to run rotunda
+  // commands from anywhere immediately. But we never silently overwrite an
+  // existing binding; if the user intentionally has another repo bound,
+  // they need to run `rotunda bind` here explicitly. This is the one
+  // mutation guarantee `bind` makes that `init` deliberately doesn't.
+  const globalConfig = loadGlobalConfig();
+  const globalConfigPath = getGlobalConfigPath();
+  if (!globalConfig.dotfilesRepo) {
+    saveGlobalConfig({ ...globalConfig, dotfilesRepo: cwd });
+    console.log(chalk.green("✓") + ` Bound dotfiles repo: ${cwd}`);
+    console.log(chalk.dim(`  ${globalConfigPath} → ${cwd}`));
+  } else if (globalConfig.dotfilesRepo === cwd) {
+    console.log(chalk.dim(`Dotfiles repo already bound: ${cwd}`));
+    console.log(chalk.dim(`  ${globalConfigPath}`));
+  } else {
+    console.log(
+      chalk.yellow("⚠") +
+        ` Dotfiles repo already bound to a different path: ${globalConfig.dotfilesRepo}`,
+    );
+    console.log(chalk.dim(`  Did not change binding.`));
+    console.log(chalk.dim(`  Run \`rotunda bind ${cwd}\` to switch the binding to this directory.`));
+  }
+
   console.log(chalk.dim("  Run `rotunda status` to see current state."));
 }

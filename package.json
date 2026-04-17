@@ -1,6 +1,6 @@
 {
   "name": "rotunda",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Bidirectional config sync tool with LLM-assisted review",
   "type": "module",
   "bin": {
@@ -11,7 +11,7 @@
     "test": "node test/run.mjs test/**/*.test.ts",
     "test:unit": "node test/run.mjs test/unit/**/*.test.ts",
     "test:integration": "node test/run.mjs test/integration/**/*.test.ts",
-    "lint": "tsc --noEmit",
+    "lint": "tsc --noEmit && tsc --noEmit -p test/tsconfig.json",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run build"
   },

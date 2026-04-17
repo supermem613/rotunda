@@ -1,8 +1,14 @@
 import { access, readFile, readdir, constants, writeFile, rm, mkdir, copyFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join, normalize, dirname } from "node:path";
 import { createInterface } from "node:readline";
 import chalk from "chalk";
 import { loadManifest, RotundaError } from "../core/manifest.js";
+import {
+  loadGlobalConfig,
+  getGlobalConfigPath,
+  resolveRepoRoot,
+} from "../core/config.js";
 import { loadState, saveState, getStatePath, removeFromState } from "../core/state.js";
 import { discoverFiles } from "../core/engine.js";
 import { isGitRepo, gitStatus, isPathIgnored } from "../utils/git.js";
@@ -465,11 +471,120 @@ async function applyFix(action: FixAction, repoPath: string, state: SyncState | 
   }
 }
 
-// ── Main command ─────────────────────────────────────────────────────
+// ── Binding check ────────────────────────────────────────────────────
+
+/**
+ * Validate the global ~/.rotunda.json binding. Surfaces every mismatch
+ * between the binding and the real cwd / on-disk state, because a bad
+ * binding silently misroutes every other rotunda command.
+ *
+ * Returns the resolved repo path (or null) and one or more checks.
+ */
+function checkBinding(cwd: string): { resolved: string | null; checks: DoctorCheck[] } {
+  const checks: DoctorCheck[] = [];
+  const configPath = getGlobalConfigPath();
+
+  let config;
+  try {
+    config = loadGlobalConfig();
+  } catch (err) {
+    const msg = err instanceof RotundaError ? err.message : String(err);
+    checks.push(check("Binding config", "fail", msg, [`File: ${configPath}`]));
+    return { resolved: null, checks };
+  }
+
+  if (!config.dotfilesRepo) {
+    checks.push(
+      check(
+        "Binding",
+        "warn",
+        "no dotfiles repo bound",
+        [
+          `Run \`rotunda bind\` from inside your dotfiles repo`,
+          `Config: ${configPath}`,
+        ],
+      ),
+    );
+    return { resolved: null, checks };
+  }
+
+  const bound = config.dotfilesRepo;
+  const details: string[] = [`Bound: ${bound}`, `Config: ${configPath}`];
+
+  // Bound path missing on disk → high-severity, this breaks every command.
+  if (!existsSync(bound)) {
+    checks.push(
+      check(
+        "Binding",
+        "fail",
+        "bound path no longer exists",
+        [...details, `Run \`rotunda bind <new-path>\` to update`],
+      ),
+    );
+    return { resolved: null, checks };
+  }
+
+  // Bound path exists but isn't a rotunda repo.
+  if (!existsSync(join(bound, "rotunda.json"))) {
+    checks.push(
+      check(
+        "Binding",
+        "fail",
+        "bound path is not a rotunda repo (no rotunda.json)",
+        [...details, `Run \`rotunda init\` there or \`rotunda bind <path>\``],
+      ),
+    );
+    return { resolved: null, checks };
+  }
+
+  // Bound path is fine, but doesn't appear to be a git repo. Warn — rotunda
+  // works without git, but most users expect it.
+  if (!existsSync(join(bound, ".git"))) {
+    checks.push(
+      check(
+        "Binding",
+        "warn",
+        "bound path is not a git repo (sync without git won't push remotely)",
+        details,
+      ),
+    );
+    return { resolved: bound, checks };
+  }
+
+  // Heads-up if cwd looks like a different rotunda repo than the binding.
+  const cwdLooksLikeRepo = existsSync(join(cwd, "rotunda.json"));
+  if (cwdLooksLikeRepo && normalize(cwd) !== normalize(bound)) {
+    checks.push(
+      check(
+        "Binding",
+        "warn",
+        "cwd is a different rotunda repo than the binding",
+        [
+          ...details,
+          `Cwd:   ${cwd}`,
+          `Run \`rotunda bind\` here if you meant to switch.`,
+        ],
+      ),
+    );
+    return { resolved: bound, checks };
+  }
+
+  checks.push(check("Binding", "pass", `bound to ${bound}`));
+  return { resolved: bound, checks };
+}
 
 export async function doctorCommand(options: { fix?: boolean }): Promise<void> {
-  const repoPath = process.cwd();
+  const cwd = process.cwd();
   const checks: DoctorCheck[] = [];
+
+  // 0. Binding check first — every other check operates on the bound repo,
+  //    so we want to surface a bad binding before anything else fires.
+  const bindingResult = checkBinding(cwd);
+  for (const c of bindingResult.checks) checks.push(c);
+
+  // Use the bound repo if resolvable, otherwise fall back to cwd so the
+  // rest of doctor still produces useful output for in-repo runs.
+  const repoPath = bindingResult.resolved ?? cwd;
 
   // 1. Manifest check (synchronous, needed for subsequent checks)
   const manifestCheck = checkManifest(repoPath);
