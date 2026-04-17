@@ -21,7 +21,7 @@
   <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/supermem613/rotunda/ci.yml?label=CI&style=flat-square">
   <img alt="npm version" src="https://img.shields.io/npm/v/rotunda?style=flat-square">
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square">
-  <img alt="Node >= 20" src="https://img.shields.io/badge/node-%3E%3D20-brightgreen?style=flat-square">
+  <img alt="Node &gt;= 20" src="https://img.shields.io/badge/node-%3E%3D20-brightgreen?style=flat-square">
 </p>
 
 ---
