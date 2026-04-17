@@ -12,9 +12,14 @@ import { join } from "node:path";
 import { readFile } from "node:fs/promises";
 import { loadToken } from "../llm/auth.js";
 import { ask } from "../llm/copilot.js";
-import { buildDescribePrompt } from "../llm/prompts.js";
+import {
+  buildDescribePrompt,
+  estimateDescribeFileTokens,
+  getDescribeSystemTokens,
+} from "../llm/prompts.js";
 import type { DescribeFileInput } from "../llm/prompts.js";
 import type { FileChange } from "../core/types.js";
+import { TokenOverflowError, MAX_PROMPT_TOKENS } from "../llm/tokens.js";
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -265,14 +270,138 @@ export async function describeCommand(
   console.log(chalk.bold(`${"─".repeat(60)}\n`));
 
   try {
-    const { system, user } = buildDescribePrompt(fileInfos);
-    const response = await ask(token, system, user);
-    const analysis = parseAnalysis(response);
+    const analysis = await analyzeWithBatching(token, fileInfos);
     renderAnalysis(analysis);
   } catch (err) {
     console.error(chalk.yellow("  ⚠ Could not get LLM analysis."));
-    console.error(chalk.dim(`  ${err}`));
+    console.error(chalk.dim(`  Error: ${err}`));
   }
 
   console.log();
+}
+
+// ─── Adaptive batching ──────────────────────────────────────
+
+/**
+ * Estimate the *raw* (untruncated) token cost of sending all files
+ * in one describe call.  Used to decide whether batching is needed
+ * BEFORE `buildDescribePrompt` truncates everything to fit.
+ */
+function estimateRawDescribeTokens(files: DescribeFileInput[]): number {
+  const overhead = getDescribeSystemTokens();
+  return files.reduce(
+    (sum, f) => sum + estimateDescribeFileTokens(f),
+    overhead,
+  );
+}
+
+/**
+ * Analyze files with adaptive batching:
+ *   1. If the raw content fits in one call → send everything (no truncation).
+ *   2. If not → split into batches using raw sizes so each batch
+ *      gets more per-file budget and less truncation.
+ *   3. If a single file still overflows → send it alone (truncation
+ *      only kicks in here, as a last resort).
+ */
+async function analyzeWithBatching(
+  token: Awaited<ReturnType<typeof loadToken>> & {},
+  fileInfos: DescribeFileInput[],
+): Promise<DescribeAnalysis> {
+  const rawTokens = estimateRawDescribeTokens(fileInfos);
+
+  // ── Fast path: everything fits without truncation ──────────
+  if (rawTokens <= MAX_PROMPT_TOKENS) {
+    const { system, user } = buildDescribePrompt(fileInfos);
+    const response = await ask(token, system, user);
+    return parseAnalysis(response);
+  }
+
+  // ── Slow path: batch by raw size ───────────────────────────
+  console.log(
+    chalk.dim(
+      `  (Large changeset ~${Math.round(rawTokens / 1000)}K tokens — analyzing in batches…)\n`,
+    )
+  );
+
+  const batches = splitIntoBatches(fileInfos);
+  const merged: DescribeAnalysis = { overview: "", files: [] };
+  const overviews: string[] = [];
+
+  for (let i = 0; i < batches.length; i++) {
+    const batch = batches[i];
+    console.log(
+      chalk.dim(`  Batch ${i + 1}/${batches.length} (${batch.length} file(s))…`)
+    );
+
+    try {
+      const { system, user } = buildDescribePrompt(batch);
+      const response = await ask(token, system, user);
+      const partial = parseAnalysis(response);
+      overviews.push(partial.overview);
+      merged.files.push(...partial.files);
+    } catch (err) {
+      // Single-file fallback: truncation is the last resort
+      if (err instanceof TokenOverflowError && batch.length > 1) {
+        for (const file of batch) {
+          try {
+            const { system, user } = buildDescribePrompt([file]);
+            const response = await ask(token, system, user);
+            const single = parseAnalysis(response);
+            overviews.push(single.overview);
+            merged.files.push(...single.files);
+          } catch {
+            merged.files.push({
+              path: file.path,
+              root: file.root,
+              action: file.action,
+              summary: "(analysis skipped — content too large)",
+              chunks: [],
+            });
+          }
+        }
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  // Combine overviews
+  merged.overview = overviews.length === 1
+    ? overviews[0]
+    : overviews.map((o, i) => `[Batch ${i + 1}] ${o}`).join(" ");
+
+  return merged;
+}
+
+/**
+ * Split files into batches using *raw* (untruncated) token estimates.
+ * Greedy packing: keeps adding files until the next one would push
+ * the batch over the token budget, then starts a new batch.
+ */
+function splitIntoBatches(files: DescribeFileInput[]): DescribeFileInput[][] {
+  const systemOverhead = getDescribeSystemTokens();
+  const budget = MAX_PROMPT_TOKENS;
+
+  const batches: DescribeFileInput[][] = [];
+  let current: DescribeFileInput[] = [];
+  let currentTokens = systemOverhead;
+
+  for (const file of files) {
+    const fileTokens = estimateDescribeFileTokens(file);
+
+    if (currentTokens + fileTokens > budget && current.length > 0) {
+      batches.push(current);
+      current = [file];
+      currentTokens = systemOverhead + fileTokens;
+    } else {
+      current.push(file);
+      currentTokens += fileTokens;
+    }
+  }
+
+  if (current.length > 0) {
+    batches.push(current);
+  }
+
+  return batches;
 }

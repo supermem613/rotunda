@@ -10,6 +10,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ask, converse } from "./copilot.js";
 import type { ChatMessage } from "./copilot.js";
+import { estimateTokens, MAX_PROMPT_TOKENS } from "./tokens.js";
 import { buildExplainPrompt, buildReshapePrompt } from "./prompts.js";
 import { gitDiffFiles } from "../utils/git.js";
 import type { AuthToken } from "./auth.js";
@@ -189,6 +190,14 @@ async function reshapeLoop(
         history.push({ role: "system", content: system });
       }
       history.push({ role: "user", content: user });
+
+      // Cap history: keep system + most recent turns to avoid overflow
+      while (
+        history.length > 2 &&
+        history.reduce((s, m) => s + estimateTokens(m.content), 0) > MAX_PROMPT_TOKENS
+      ) {
+        history.splice(1, 1); // drop oldest non-system message
+      }
 
       const reshaped = await converse(token, history);
       history.push({ role: "assistant", content: reshaped });

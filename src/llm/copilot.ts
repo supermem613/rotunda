@@ -5,6 +5,11 @@
 
 import type { AuthToken } from "./auth.js";
 import { COPILOT_EDITOR_VERSION, COPILOT_INTEGRATION_ID } from "./auth.js";
+import {
+  estimateTokens,
+  MAX_PROMPT_TOKENS,
+  TokenOverflowError,
+} from "./tokens.js";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -16,22 +21,40 @@ export interface ChatCompletionResponse {
   finishReason: string;
 }
 
+export interface ChatCompletionOptions {
+  /** Override the default max_tokens for the response. */
+  maxResponseTokens?: number;
+}
+
 /**
  * Call the GitHub Copilot Chat completions API.
  * Uses the Copilot Chat endpoint available to authenticated users.
+ *
+ * Throws `TokenOverflowError` if the estimated prompt size exceeds
+ * the model limit so callers can batch / truncate before retrying.
  */
 export async function chatCompletion(
   token: AuthToken,
   messages: ChatMessage[],
+  options?: ChatCompletionOptions,
 ): Promise<ChatCompletionResponse> {
+  // ── Pre-flight token check ─────────────────────────────────
+  const totalTokens = messages.reduce(
+    (sum, m) => sum + estimateTokens(m.content),
+    0,
+  );
+  if (totalTokens > MAX_PROMPT_TOKENS) {
+    throw new TokenOverflowError(totalTokens, MAX_PROMPT_TOKENS);
+  }
+
   // Use the GitHub Copilot Chat API endpoint
   const endpoint = "https://api.githubcopilot.com/chat/completions";
 
   const body = JSON.stringify({
     messages,
-    model: "gpt-4o",
+    model: "gpt-5-mini",
     temperature: 0.3,
-    max_tokens: 2048,
+    max_tokens: options?.maxResponseTokens ?? 4096,
   });
 
   const response = await fetch(endpoint, {
@@ -77,13 +100,14 @@ export async function ask(
   token: AuthToken,
   systemPrompt: string,
   userPrompt: string,
+  options?: ChatCompletionOptions,
 ): Promise<string> {
   const messages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
     { role: "user", content: userPrompt },
   ];
 
-  const result = await chatCompletion(token, messages);
+  const result = await chatCompletion(token, messages, options);
   return result.content;
 }
 
@@ -93,7 +117,8 @@ export async function ask(
 export async function converse(
   token: AuthToken,
   messages: ChatMessage[],
+  options?: ChatCompletionOptions,
 ): Promise<string> {
-  const result = await chatCompletion(token, messages);
+  const result = await chatCompletion(token, messages, options);
   return result.content;
 }
