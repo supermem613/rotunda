@@ -168,8 +168,8 @@ export function buildReshapePrompt(
 }
 
 export function buildConflictPrompt(
-  repoContent: string,
-  localContent: string,
+  _repoContent: string,
+  _localContent: string,
   repoDiff: string,
   localDiff: string,
 ): PromptPair {

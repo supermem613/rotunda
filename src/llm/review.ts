@@ -43,7 +43,7 @@ export async function reviewChanges(
   changes: FileChange[],
   manifest: Manifest,
   repoPath: string,
-  direction: "push" | "pull",
+  _direction: "push" | "pull",
 ): Promise<ReviewResult[]> {
   const results: ReviewResult[] = [];
 
@@ -166,7 +166,7 @@ async function promptDecision(change: FileChange): Promise<ReviewDecision> {
 
 async function reshapeLoop(
   token: AuthToken,
-  change: FileChange,
+  _change: FileChange,
   repoContent: string | null,
   localContent: string | null,
   diff: string,
