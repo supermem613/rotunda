@@ -240,7 +240,7 @@ export async function computeAllChanges(
     }
 
     const changes = computeChanges(
-      root.name,
+      root.repo,
       localHashes,
       repoHashes,
       stateFiles

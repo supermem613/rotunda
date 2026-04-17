@@ -37,7 +37,7 @@ export async function listCommand(options: { local?: boolean; repo?: boolean }):
 
     // Header
     console.log();
-    console.log(chalk.bold.cyan(`  ┌─ ${root.name} `));
+    console.log(chalk.bold.cyan(`  ┌─ ${root.repo} `));
     console.log(chalk.dim(`  │  local: ${root.local}`));
     console.log(chalk.dim(`  │  repo:  ${root.repo}`));
     console.log(chalk.dim(`  │  include: ${root.include.join(", ")}`));

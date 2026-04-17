@@ -88,7 +88,7 @@ async function checkRepoStructure(manifest: Manifest, repoPath: string): Promise
     try {
       await access(dir);
     } catch {
-      missing.push(`${root.name} → ${root.repo}`);
+      missing.push(`${root.repo} → ${root.repo}`);
     }
   }
   if (missing.length) {
@@ -103,7 +103,7 @@ async function checkLocalStructure(manifest: Manifest): Promise<DoctorCheck> {
     try {
       await access(root.local);
     } catch {
-      missing.push(`${root.name} → ${root.local}`);
+      missing.push(`${root.repo} → ${root.local}`);
     }
   }
   if (missing.length) {
@@ -139,7 +139,7 @@ async function checkOrphans(manifest: Manifest): Promise<DoctorCheck> {
           continue; // properly excluded
         }
       }
-      orphans.push(`${root.name}: ${relPath}`);
+      orphans.push(`${root.repo}: ${relPath}`);
     }
   }
   if (orphans.length) {
@@ -239,7 +239,7 @@ async function checkIgnoreCoverage(manifest: Manifest, repoPath: string): Promis
     );
     const excluded = includedWithout.length - includedWithExcludes.length;
     if (excluded > 0) {
-      issues.push(`${root.name}: ${excluded} file${excluded !== 1 ? "s" : ""} excluded by patterns`);
+      issues.push(`${root.repo}: ${excluded} file${excluded !== 1 ? "s" : ""} excluded by patterns`);
     }
   }
   if (issues.length) {
@@ -284,7 +284,7 @@ async function checkPermissions(manifest: Manifest): Promise<DoctorCheck> {
       // Check if it exists at all
       try {
         await access(root.local);
-        issues.push(`${root.name}: ${root.local} — not readable/writable`);
+        issues.push(`${root.repo}: ${root.local} — not readable/writable`);
       } catch {
         // dir doesn't exist — reported by local structure check
       }
@@ -363,7 +363,7 @@ function buildDoctorFixUserPrompt(
     lines.push("");
     lines.push("Manifest roots:");
     for (const root of manifest.roots) {
-      lines.push(`  ${root.name}: local=${root.local} repo=${root.repo}`);
+      lines.push(`  ${root.repo}: local=${root.local} repo=${root.repo}`);
     }
   }
 
