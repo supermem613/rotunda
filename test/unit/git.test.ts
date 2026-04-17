@@ -11,6 +11,7 @@ import {
   gitStatus,
   gitCommitAndPush,
   gitDiffFiles,
+  isPathIgnored,
 } from "../../src/utils/git.js";
 
 const TMP = join(import.meta.dirname, "__git_tmp__");
@@ -222,6 +223,56 @@ describe("gitCommitAndPush", () => {
       cwd: REPO,
     }).toString().trim();
     assert.ok(show.includes("staged.txt"), "staged.txt should be in the commit");
+  });
+});
+
+// --- isPathIgnored ---
+
+describe("isPathIgnored", () => {
+  const REPO = join(TMP, "ignore-repo");
+
+  beforeEach(() => {
+    rmSync(TMP, { recursive: true, force: true });
+    initGitRepo(REPO);
+  });
+
+  afterEach(cleanup);
+
+  it("returns true for a path ignored by .gitignore", async () => {
+    writeFileSync(join(REPO, ".gitignore"), ".rotunda/\n");
+    assert.equal(await isPathIgnored(".rotunda/state.json", REPO), true);
+  });
+
+  it("returns true for a directory pattern when probing a child file", async () => {
+    writeFileSync(join(REPO, ".gitignore"), "build/\n");
+    assert.equal(await isPathIgnored("build/output.js", REPO), true);
+  });
+
+  it("returns false for a path not matched by any ignore rule", async () => {
+    writeFileSync(join(REPO, ".gitignore"), "node_modules/\n");
+    assert.equal(await isPathIgnored("src/index.ts", REPO), false);
+  });
+
+  it("returns false when .gitignore is empty/absent", async () => {
+    assert.equal(await isPathIgnored(".rotunda/state.json", REPO), false);
+  });
+
+  it("returns false for a non-git directory rather than throwing", async () => {
+    const plain = join(tmpdir(), `rotunda-test-noignore-${process.pid}`);
+    mkdirSync(plain, { recursive: true });
+    try {
+      assert.equal(await isPathIgnored("anything", plain), false);
+    } finally {
+      rmSync(plain, { recursive: true, force: true });
+    }
+  });
+
+  it("respects negation patterns", async () => {
+    // Note: gitignore can only negate files/dirs whose PARENT is not ignored.
+    // Use file glob (not dir) so negation actually applies.
+    writeFileSync(join(REPO, ".gitignore"), "*.log\n!keep.log\n");
+    assert.equal(await isPathIgnored("other.log", REPO), true);
+    assert.equal(await isPathIgnored("keep.log", REPO), false);
   });
 });
 

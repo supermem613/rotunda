@@ -175,16 +175,8 @@ export async function pullCommand(options: { yes?: boolean }): Promise<void> {
   // Save state
   await saveState(cwd, updatedState);
 
-  // Git commit and push state changes
-  if (await isGitRepo(cwd)) {
-    const commitMsg = `rotunda pull — ${approved.length} file(s)`;
-    try {
-      await gitCommitAndPush(cwd, [".rotunda"], commitMsg, true);
-      console.log(chalk.green(`  ✓ Committed and pushed: "${commitMsg}"`));
-    } catch {
-      console.log(chalk.yellow("\n  ⚠ State saved but git commit/push failed. Commit manually."));
-    }
-  }
+  // No git commit: pull only mutates local files and per-machine state (.rotunda/),
+  // neither of which belongs in a commit.
 
   console.log(chalk.green(`\n  ✓ Pull complete. ${approved.length} file(s) applied.`));
   }); // end withLock

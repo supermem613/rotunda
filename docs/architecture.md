@@ -147,7 +147,8 @@ This ensures you never end up with a half-written state file.
    - added/modified: copy local file → repo directory
    - deleted: remove file from repo directory
 8. Update state with new hashes
-9. Git commit and push to remote
+9. If any repo files changed, git commit and push to remote
+   (state lives in the gitignored `.rotunda/`, so it is never committed)
 ```
 
 ### Pull Flow (repo → local)
@@ -163,7 +164,7 @@ This ensures you never end up with a half-written state file.
    - added/modified: copy repo file → local directory
    - deleted: remove local file + clean empty parent dirs
 8. Update state with new hashes
-9. Git commit state changes and push to remote
+9. No git commit (pull only writes to local files and per-machine state)
 ```
 
 ### Sync Flow (bidirectional)
@@ -178,7 +179,8 @@ This ensures you never end up with a half-written state file.
    - Conflicts → interactive resolution (keep local, keep repo, or skip)
 5. Apply all decisions
 6. Update state
-7. Git commit and push to remote
+7. If any repo files changed, git commit and push to remote
+   (purely pull-direction syncs make no commit)
 ```
 
 ## LLM Integration
@@ -286,7 +288,7 @@ Rotunda uses git as a transport mechanism — your dotfiles repo is a regular gi
 **Key design decisions:**
 
 - **Automatic git pull**: All sync commands (`push`, `pull`, `sync`) automatically run `git pull --ff-only` before computing changes, ensuring you're working against the latest remote state. If the pull fails (e.g., no remote configured, diverged history), the command warns and continues.
-- **Automatic git push**: After applying changes and updating state, rotunda commits and pushes to the remote automatically. No manual `git push` needed.
+- **Automatic git push**: After applying changes, rotunda commits and pushes any repo-side file changes to the remote automatically. No manual `git push` needed. Pure pull operations don't commit because per-machine state lives in the gitignored `.rotunda/` directory.
 - **`git diff --no-index`**: Used for diffing because the local files are outside the repo. The `--no-index` flag compares arbitrary files without requiring them to be in a git repository.
 - **Exit code handling**: `git diff --no-index` exits with code 1 when files differ (not an error). Rotunda handles this in the git utility layer.
 

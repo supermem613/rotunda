@@ -168,7 +168,7 @@ export async function pushCommand(options: { yes?: boolean }): Promise<void> {
       ? `rotunda push — ${approved.length} file(s) (${reshapeCount} reshaped)`
       : `rotunda push — ${approved.length} file(s)`;
     try {
-      await gitCommitAndPush(cwd, [".rotunda", ...gitPaths], commitMsg, true);
+      await gitCommitAndPush(cwd, gitPaths, commitMsg, true);
       console.log(chalk.green(`\n  ✓ Committed and pushed: "${commitMsg}"`));
     } catch (err) {
       console.log(chalk.yellow("\n  ⚠ Changes applied but git commit failed. Commit manually."));

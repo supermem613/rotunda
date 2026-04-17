@@ -88,6 +88,40 @@ export async function gitPull(cwd: string): Promise<boolean> {
 }
 
 /**
+ * Check whether a path would be ignored by git (via .gitignore, core.excludesFile,
+ * .git/info/exclude, etc). Uses `git check-ignore`, which honours all ignore
+ * sources rather than just the repo-root .gitignore.
+ *
+ * Returns true if the path is ignored, false otherwise. Returns false (rather
+ * than throwing) if `cwd` is not a git repository or git is not available.
+ */
+export async function isPathIgnored(path: string, cwd: string): Promise<boolean> {
+  // Bypass the git() wrapper so we can read the raw exit code.
+  // git check-ignore exits 0 if path is ignored, 1 if not, 128 on error.
+  return new Promise((resolve) => {
+    execFile(
+      "git",
+      ["check-ignore", "-q", "--", path],
+      { cwd },
+      (err) => {
+        if (!err) {
+          resolve(true);
+          return;
+        }
+        const code = (err as Error & { code?: number }).code;
+        if (code === 1) {
+          resolve(false);
+          return;
+        }
+        // 128 (or other) → not a git repo / git missing → treat as "unknown",
+        // fall back to "not ignored" so callers don't false-alarm.
+        resolve(false);
+      },
+    );
+  });
+}
+
+/**
  * Get a unified diff between two files using git diff --no-index.
  */
 export async function gitDiffFiles(

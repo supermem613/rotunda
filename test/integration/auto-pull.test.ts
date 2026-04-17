@@ -324,8 +324,9 @@ describe("Git commit+push: sync command", () => {
     );
   });
 
-  it("commits state changes even for pull-direction sync", () => {
-    // Push a new file from clone A
+  it("does not commit when sync only applies pull-direction changes", () => {
+    // .rotunda/ holds per-machine state and must not be committed; if there are
+    // no local→repo changes there's nothing else to commit either.
     execFileSync("git", ["pull"], { cwd: CLONE_A });
     mkdirSync(join(CLONE_A, "config"), { recursive: true });
     writeFileSync(join(CLONE_A, "config", "from-remote.txt"), "remote content");
@@ -333,13 +334,18 @@ describe("Git commit+push: sync command", () => {
     execFileSync("git", ["commit", "-m", "add remote file"], { cwd: CLONE_A });
     execFileSync("git", ["push"], { cwd: CLONE_A });
 
+    const beforeLog = getRemoteLog(BARE);
     const output = runCli("sync -y", DOTFILES);
+    const afterLog = getRemoteLog(BARE);
 
-    // State changes should be committed and pushed
-    const log = getRemoteLog(BARE);
     assert.ok(
-      log.includes("rotunda sync"),
-      `Remote should have rotunda sync commit for state update: ${log}`,
+      !output.includes("Committed and pushed"),
+      `Pull-only sync should not commit/push: ${output}`,
+    );
+    assert.equal(
+      beforeLog,
+      afterLog,
+      `Remote history should be unchanged for pull-only sync.\nBefore:\n${beforeLog}\nAfter:\n${afterLog}`,
     );
   });
 });
@@ -354,8 +360,7 @@ describe("Git commit+push: pull command", () => {
   });
   afterEach(cleanup);
 
-  it("commits and pushes state changes after pulling", () => {
-    // Push a new file from clone A
+  it("does not create any commits (state is per-machine)", () => {
     execFileSync("git", ["pull"], { cwd: CLONE_A });
     mkdirSync(join(CLONE_A, "config"), { recursive: true });
     writeFileSync(join(CLONE_A, "config", "pulled-file.txt"), "content");
@@ -363,18 +368,24 @@ describe("Git commit+push: pull command", () => {
     execFileSync("git", ["commit", "-m", "add file"], { cwd: CLONE_A });
     execFileSync("git", ["push"], { cwd: CLONE_A });
 
+    const beforeLog = getRemoteLog(BARE);
     const output = runCli("pull -y", DOTFILES);
+    const afterLog = getRemoteLog(BARE);
 
     assert.ok(
-      output.includes("Committed and pushed"),
-      `Expected commit+push message: ${output}`,
+      !output.includes("Committed and pushed"),
+      `Pull should not commit/push (only writes local files + per-machine state): ${output}`,
+    );
+    assert.equal(
+      beforeLog,
+      afterLog,
+      `Remote history should be unchanged after pull.\nBefore:\n${beforeLog}\nAfter:\n${afterLog}`,
     );
 
-    // Verify state commit reached the remote
-    const log = getRemoteLog(BARE);
+    // The file should still have been applied locally.
     assert.ok(
-      log.includes("rotunda pull"),
-      `Remote should have rotunda pull commit: ${log}`,
+      existsSync(join(LOCAL, "pulled-file.txt")),
+      "pulled-file.txt should be applied to local",
     );
   });
 });

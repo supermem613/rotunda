@@ -5,7 +5,7 @@ import chalk from "chalk";
 import { loadManifest, RotundaError } from "../core/manifest.js";
 import { loadState, saveState, getStatePath, removeFromState } from "../core/state.js";
 import { discoverFiles } from "../core/engine.js";
-import { isGitRepo, gitStatus } from "../utils/git.js";
+import { isGitRepo, gitStatus, isPathIgnored } from "../utils/git.js";
 import { shouldInclude } from "../utils/glob.js";
 import { loadToken } from "../llm/auth.js";
 import { ask } from "../llm/copilot.js";
@@ -296,6 +296,29 @@ async function checkPermissions(manifest: Manifest): Promise<DoctorCheck> {
   return check("Permissions", "pass", "all local dirs are readable/writable");
 }
 
+export async function checkRotundaIgnored(repoPath: string): Promise<DoctorCheck> {
+  if (!(await isGitRepo(repoPath))) {
+    return check("Rotunda ignored", "pass", "not a git repo — nothing to check");
+  }
+  // Probe with a real path inside .rotunda/ (state.json) so that pattern,
+  // directory, and trailing-slash variants all resolve correctly.
+  const probe = join(".rotunda", "state.json");
+  const ignored = await isPathIgnored(probe, repoPath);
+  if (ignored) {
+    return check("Rotunda ignored", "pass", ".rotunda/ is gitignored");
+  }
+  return check(
+    "Rotunda ignored",
+    "fail",
+    ".rotunda/ is NOT gitignored — per-machine state would leak into commits",
+    [
+      "Add `.rotunda/` to .gitignore at the repo root.",
+      "Rotunda state (.rotunda/state.json) records per-machine sync hashes and must not be shared across machines.",
+      "`rotunda init` adds this entry automatically; it appears something removed it.",
+    ],
+  );
+}
+
 // ── Prompt helper ────────────────────────────────────────────────────
 
 async function prompt(question: string): Promise<string> {
@@ -476,6 +499,7 @@ export async function doctorCommand(options: { fix?: boolean }): Promise<void> {
       gitStatusResult,
       ignoreCoverage,
       permissions,
+      rotundaIgnored,
     ] = await Promise.all([
       checkRepoStructure(manifest, repoPath),
       checkLocalStructure(manifest),
@@ -486,6 +510,7 @@ export async function doctorCommand(options: { fix?: boolean }): Promise<void> {
       checkGitStatus(manifest, repoPath),
       checkIgnoreCoverage(manifest, repoPath),
       checkPermissions(manifest),
+      checkRotundaIgnored(repoPath),
     ]);
 
     checks.push(repoStructure);
@@ -499,11 +524,13 @@ export async function doctorCommand(options: { fix?: boolean }): Promise<void> {
     checks.push(checkCrossRootConflicts(manifest, repoPath));
 
     checks.push(permissions);
+    checks.push(rotundaIgnored);
   } else {
     // Manifest failed — still run the remaining checks as skipped
     const names = [
       "State", "Repo structure", "Local structure", "Orphan detection",
-      "State drift", "Git status", "Ignore coverage", "Cross-root conflicts", "Permissions",
+      "State drift", "Git status", "Ignore coverage", "Cross-root conflicts",
+      "Permissions", "Rotunda ignored",
     ];
     for (const name of names) {
       checks.push(check(name, "warn", "skipped (manifest not available)"));

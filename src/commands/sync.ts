@@ -204,12 +204,11 @@ export async function syncCommand(options: { yes?: boolean }): Promise<void> {
   // Save state
   await saveState(cwd, updatedState);
 
-  // Git commit and push
-  if (await isGitRepo(cwd)) {
-    const totalApplied = autoApply.length;
-    const commitMsg = `rotunda sync — ${totalApplied} file(s)`;
+  // Git commit and push (only if any repo-side files actually changed)
+  if (gitPaths.length > 0 && (await isGitRepo(cwd))) {
+    const commitMsg = `rotunda sync — ${gitPaths.length} file(s)`;
     try {
-      await gitCommitAndPush(cwd, [".rotunda", ...gitPaths], commitMsg, true);
+      await gitCommitAndPush(cwd, gitPaths, commitMsg, true);
       console.log(chalk.green(`  ✓ Committed and pushed: "${commitMsg}"`));
     } catch {
       console.log(chalk.yellow("\n  ⚠ Changes applied but git commit/push failed. Commit manually."));

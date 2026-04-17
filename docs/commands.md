@@ -275,7 +275,7 @@ rotunda push [-y | --yes]
 6. Copies local files → repo for additions and modifications.
 7. Deletes files from repo for local deletions.
 8. Updates the sync state.
-9. Creates a git commit and pushes to the remote.
+9. If any files changed in the repo, creates a git commit and pushes to the remote.
 
 **Output example:**
 
@@ -304,7 +304,7 @@ Files that changed on both sides are not pushed. Rotunda warns you and directs y
 
 **Git integration:**
 
-After copying files, rotunda stages the changed paths and `.rotunda/` state directory, then creates a commit with the message `rotunda push — N file(s)` and pushes it to the remote. All three sync commands (`push`, `pull`, `sync`) automatically run `git pull --ff-only` before computing changes to ensure you're working against the latest remote state.
+After copying files, rotunda stages the changed paths and creates a commit with the message `rotunda push — N file(s)`, then pushes it to the remote. The `.rotunda/` state directory is **not** committed — it holds per-machine sync hashes and is gitignored. All three sync commands (`push`, `pull`, `sync`) automatically run `git pull --ff-only` before computing changes to ensure you're working against the latest remote state.
 
 ---
 
@@ -334,7 +334,7 @@ rotunda pull [-y | --yes]
 6. Copies repo files → local for additions and modifications.
 7. Deletes files from local for repo deletions (**orphan cleanup**).
 8. Updates the sync state.
-9. Creates a git commit for state changes and pushes to the remote.
+9. Does **not** create a git commit — pull only writes to local files and to per-machine state in the gitignored `.rotunda/` directory.
 
 **Output example:**
 
@@ -395,7 +395,7 @@ Combines push and pull into a single operation:
    - Keep repo version
    - Skip (leave unresolved)
 5. Updates the sync state.
-6. Creates a git commit for all repo-side changes and pushes to the remote.
+6. If any repo-side files changed, creates a git commit and pushes to the remote. A purely pull-direction sync makes no commit (per-machine state in `.rotunda/` is never committed).
 
 **When to use:**
 
@@ -422,7 +422,7 @@ rotunda doctor [--fix]
 
 **What it does:**
 
-Runs 10 independent checks and reports the result of each. Checks are run in parallel where possible for speed. When machine overrides are active, the manifest check shows which machine was matched.
+Runs 11 independent checks and reports the result of each. Checks are run in parallel where possible for speed. When machine overrides are active, the manifest check shows which machine was matched.
 
 **Output format:**
 
@@ -443,8 +443,9 @@ Runs 10 independent checks and reports the result of each. Checks are run in par
       claude: 12 files excluded by patterns
   Cross-root conflicts .. ✅ no overlapping paths between roots
   Permissions ........... ✅ all local dirs are readable/writable
+  Rotunda ignored ....... ✅ .rotunda/ is gitignored
 
-  Summary: 0 errors, 2 warnings, 8 passed
+  Summary: 0 errors, 2 warnings, 9 passed
 ```
 
 ### `--fix`: LLM-Assisted Repair
@@ -502,6 +503,7 @@ When `--fix` is passed and there are warnings or errors, rotunda sends the full 
 | 8  | **Ignore coverage**    | Verifies that exclude patterns are actually filtering files.                    |
 | 9  | **Cross-root conflicts** | Checks for overlapping paths between roots (both local and repo sides).      |
 | 10 | **Permissions**        | Verifies local directories are readable and writable.                           |
+| 11 | **Rotunda ignored**    | Verifies `.rotunda/` is gitignored so per-machine sync state never gets committed. |
 
 **Status icons:**
 
