@@ -205,7 +205,7 @@ rotunda list
 | `rotunda init` | Initialize `rotunda.json` and state in the current repo |
 | `rotunda status` | Show what changed since last sync |
 | `rotunda diff [root]` | Show file-level diffs for modified files |
-| `rotunda describe [root]` | Show diffs with LLM-powered per-file, per-chunk analysis |
+| `rotunda describe [root]` | LLM-powered per-file, per-chunk change analysis for modified files |
 | `rotunda push [-y]` | Push local changes to repo (with LLM review) |
 | `rotunda pull [-y]` | Pull repo changes to local (with LLM review) |
 | `rotunda sync [-y]` | Bidirectional sync with conflict resolution |
@@ -228,11 +228,13 @@ rotunda diff --html       # Generate interactive HTML diff report
 ### Describe (LLM Analysis)
 
 ```bash
-rotunda describe          # Full diff + LLM-powered breakdown
+rotunda describe          # LLM-powered breakdown of all changes
 rotunda describe claude   # Describe only the "claude" root
 ```
 
-Output is two phases: the raw diff (identical to `rotunda diff`), followed by a structured analysis:
+Sends change data (diffs and file contents) to GitHub Copilot and returns a structured analysis. For raw diffs, use `rotunda diff`.
+
+For large changesets that exceed the model's token limit, describe automatically batches files across multiple LLM calls and merges the results.
 
 ```
   ──────────────────────────────────────────────────────────────

@@ -1,6 +1,8 @@
 /**
- * `rotunda describe` — show raw diffs then an LLM-generated
- * hierarchical analysis (overview → files → chunks → observations).
+ * `rotunda describe` — LLM-generated hierarchical analysis of changes
+ * (overview → files → chunks → observations).
+ *
+ * For raw diffs, use `rotunda diff`.
  */
 
 import chalk from "chalk";
@@ -18,12 +20,11 @@ import {
   getDescribeSystemTokens,
 } from "../llm/prompts.js";
 import type { DescribeFileInput } from "../llm/prompts.js";
-import type { FileChange } from "../core/types.js";
 import { TokenOverflowError, MAX_PROMPT_TOKENS } from "../llm/tokens.js";
 
 // ─── Types ───────────────────────────────────────────────────
 
-interface DescribeAnalysis {
+export interface DescribeAnalysis {
   overview: string;
   files: Array<{
     path: string;
@@ -46,7 +47,7 @@ async function readFileContent(path: string): Promise<string | null> {
 }
 
 /** Robustly extract JSON from an LLM response that may include fences. */
-function parseAnalysis(raw: string): DescribeAnalysis {
+export function parseAnalysis(raw: string): DescribeAnalysis {
   try { return JSON.parse(raw); } catch { /* continue */ }
 
   const fenceMatch = raw.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/);
@@ -64,7 +65,7 @@ function parseAnalysis(raw: string): DescribeAnalysis {
 }
 
 /** Word-wrap text to a given width. */
-function wrapText(text: string, width: number): string[] {
+export function wrapText(text: string, width: number): string[] {
   const words = text.split(/\s+/);
   const lines: string[] = [];
   let current = "";
@@ -188,79 +189,46 @@ export async function describeCommand(
     return;
   }
 
-  // ── Phase 1: Raw diff ─────────────────────────────────────
+  // ── Gather file data for LLM ───────────────────────────────
 
   const fileInfos: DescribeFileInput[] = [];
-  const byRoot = new Map<string, FileChange[]>();
+
   for (const c of changes) {
-    const group = byRoot.get(c.rootName) ?? [];
-    group.push(c);
-    byRoot.set(c.rootName, group);
-  }
-
-  console.log(chalk.bold(`\n${"─".repeat(60)}`));
-  console.log(chalk.bold("  Diff"));
-  console.log(chalk.bold(`${"─".repeat(60)}`));
-
-  for (const [rootName, rootChanges] of byRoot) {
-    console.log(
-      chalk.bold(
-        `\n── ${rootName} ${"─".repeat(Math.max(0, 55 - rootName.length))}`
-      )
-    );
-
-    const rootDef = manifest.roots.find((r) => r.repo === rootName);
+    const rootDef = manifest.roots.find((r) => r.repo === c.rootName);
     if (!rootDef) continue;
 
-    for (const c of rootChanges) {
-      const localFile = join(rootDef.local, c.relativePath);
-      const repoFile  = join(cwd, rootDef.repo, c.relativePath);
+    const localFile = join(rootDef.local, c.relativePath);
+    const repoFile  = join(cwd, rootDef.repo, c.relativePath);
 
-      if (c.action === "modified" || c.action === "conflict") {
-        try {
-          const colorDiff = await gitDiffFiles(repoFile, localFile, true);
-          if (colorDiff) console.log(colorDiff);
-        } catch {
-          console.log(chalk.dim(`  (could not diff ${c.relativePath})`));
-        }
-      } else if (c.action === "added") {
-        const label = c.side === "local" ? "added locally" : "added in repo";
-        console.log(chalk.green(`  + ${c.relativePath} (${label})`));
-      } else if (c.action === "deleted") {
-        const label = c.side === "local" ? "deleted locally" : "deleted in repo";
-        console.log(chalk.red(`  - ${c.relativePath} (${label})`));
-      }
-
-      let plainDiff = "";
-      if (c.action === "modified" || c.action === "conflict") {
-        try {
-          plainDiff = await gitDiffFiles(repoFile, localFile, false);
-        } catch { /* diff unavailable */ }
-      }
-
-      let content: string | null = null;
-      if (c.action === "added") {
-        content = await readFileContent(
-          c.side === "local" ? localFile : repoFile
-        );
-      } else if (c.action === "deleted") {
-        content = await readFileContent(
-          c.side === "local" ? repoFile : localFile
-        );
-      }
-
-      fileInfos.push({
-        path: c.relativePath,
-        root: c.rootName,
-        action: c.action,
-        side: c.side,
-        diff: plainDiff,
-        content,
-      });
+    let plainDiff = "";
+    if (c.action === "modified" || c.action === "conflict") {
+      try {
+        plainDiff = await gitDiffFiles(repoFile, localFile, false);
+      } catch { /* diff unavailable */ }
     }
+
+    let content: string | null = null;
+    if (c.action === "added") {
+      content = await readFileContent(
+        c.side === "local" ? localFile : repoFile
+      );
+    } else if (c.action === "deleted") {
+      content = await readFileContent(
+        c.side === "local" ? repoFile : localFile
+      );
+    }
+
+    fileInfos.push({
+      path: c.relativePath,
+      root: c.rootName,
+      action: c.action,
+      side: c.side,
+      diff: plainDiff,
+      content,
+    });
   }
 
-  // ── Phase 2: LLM analysis ─────────────────────────────────
+  // ── LLM analysis ──────────────────────────────────────────
 
   console.log(chalk.bold(`\n${"─".repeat(60)}`));
   console.log(
@@ -378,7 +346,7 @@ async function analyzeWithBatching(
  * Greedy packing: keeps adding files until the next one would push
  * the batch over the token budget, then starts a new batch.
  */
-function splitIntoBatches(files: DescribeFileInput[]): DescribeFileInput[][] {
+export function splitIntoBatches(files: DescribeFileInput[]): DescribeFileInput[][] {
   const systemOverhead = getDescribeSystemTokens();
   const budget = MAX_PROMPT_TOKENS;
 
