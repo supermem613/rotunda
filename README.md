@@ -293,7 +293,7 @@ The manifest lives at the root of your config repo:
       "exclude": ["node_modules", "cache", "sessions", "*.credentials*"]
     }
   ],
-  "globalExclude": ["node_modules", ".git", "*.log"],
+  "globalExclude": ["node_modules", ".git", "**/*.log"],
   "machineOverrides": {
     "personal-laptop": {
       "roots": { "copilot": { "exclude": ["config.json"] } }

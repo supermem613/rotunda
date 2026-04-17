@@ -16,7 +16,7 @@ The `rotunda.json` manifest file defines what rotunda syncs, where it syncs from
       "exclude": ["node_modules", "cache"]
     }
   ],
-  "globalExclude": ["node_modules", ".git", "*.log"],
+  "globalExclude": ["node_modules", ".git", "**/*.log"],
   "machineOverrides": {
     "wisp": {
       "exclude": [".npmrc"],
@@ -82,7 +82,7 @@ Rotunda uses [minimatch](https://github.com/isaacs/minimatch) for glob pattern m
 The `globalExclude` array applies to every root. Use it for patterns that should always be excluded regardless of root:
 
 ```json
-"globalExclude": ["node_modules", ".git", "*.log", "*.tmp", "__pycache__"]
+"globalExclude": ["node_modules", ".git", "**/*.log", "**/*.tmp", "__pycache__"]
 ```
 
 ## Machine Overrides
@@ -254,8 +254,8 @@ When you run `rotunda init`, the following manifest is created if no `rotunda.js
   "globalExclude": [
     "node_modules",
     ".git",
-    "*.log",
-    "*.tmp",
+    "**/*.log",
+    "**/*.tmp",
     "__pycache__"
   ]
 }
@@ -282,7 +282,7 @@ To sync your Neovim configuration alongside Claude and Copilot:
       "exclude": ["plugin/packer_compiled.lua", "*.bak"]
     }
   ],
-  "globalExclude": ["node_modules", ".git", "*.log", "*.tmp"]
+  "globalExclude": ["node_modules", ".git", "**/*.log", "**/*.tmp"]
 }
 ```
 

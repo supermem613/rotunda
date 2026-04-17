@@ -27,9 +27,11 @@ Rotunda provides:
 | Ignore patterns | `.chezmoiignore` (one global file) | Per-root `exclude` arrays + `globalExclude` |
 | State tracking | None (always re-applies) | Three-way state via `.rotunda/state.json` |
 
-### What Stays with Chezmoi
+### What Stays with Chezmoi (or Moves to `bootstrap/`)
 
-Chezmoi is still the right tool for:
+If you're fully migrating away from chezmoi, convert template-dependent scripts to standalone scripts and put them in a `bootstrap/` directory. If only a few files use `{{ include }}` or `{{ .chezmoi.hostname }}`, it's simpler to remove the template dependency than to keep chezmoi installed just for rendering.
+
+If you prefer to keep chezmoi for non-agent dotfiles, these are good candidates:
 
 - **One-time bootstrap scripts** — app installation via `winget`, `brew`, `apt`, `choco`
 - **Shell configs** — `.bashrc`, `.zshrc`, PowerShell profiles (authored once, deployed everywhere)
@@ -37,6 +39,14 @@ Chezmoi is still the right tool for:
 - **Encrypted secrets** — chezmoi's age/gpg encryption for sensitive dotfiles
 
 **Rotunda handles:** AI agent directories that change at runtime — skills, extensions, hooks, agents, and settings that tools like Claude Code and Copilot CLI create and modify during use.
+
+### What Should NOT Be a Rotunda Root
+
+Some files in your chezmoi setup don't fit rotunda's bidirectional model:
+
+- **Single files in `~/`** — Rotunda roots are directories. You can't sync `~/.npmrc` without making `~/` a root (which scans your entire home directory). Move single files to `bootstrap/` for manual deployment.
+- **Cloud-synced directories** — If a path is already synced via OneDrive, Dropbox, or iCloud (e.g., `~/OneDrive/Documents/PowerShell/`), adding rotunda creates a conflicting sync. Let the cloud provider handle it.
+- **Mixed-state config files** — Files like `.copilot/config.json` mix user preferences (hooks, model, theme) with machine-local state (trusted folders, installed plugins, login sessions, absolute cache paths). Exclude these from rotunda to avoid cross-machine corruption. See [Handling config.json](#handling-copilot-configjson) below.
 
 ---
 
@@ -123,11 +133,14 @@ For each `dot_*` directory, decide:
 |-----------|---------------------|-----------------|--------|
 | `dot_claude/` | Yes (skills, hooks, agents) | Usually no | **Rotunda** |
 | `dot_copilot/` | Yes (extensions, agents) | Usually no | **Rotunda** |
-| `dot_bashrc` | No | Often yes | **Chezmoi** |
-| `dot_gitconfig` | No | Often yes | **Chezmoi** |
+| `dot_npmrc` | No | No | **Bootstrap** (single file, can't be a root) |
+| `dot_bashrc` | No | Often yes | **Chezmoi** or **Bootstrap** |
+| `dot_gitconfig` | No | Often yes | **Chezmoi** or **Bootstrap** |
 | `dot_config/nvim/` | Sometimes | Rarely | **Either** (your call) |
+| `AppData/Local/clink/` | No | No | **Rotunda** (directory with multiple config files) |
+| `readonly_OneDrive*/` | No | No | **Skip** (already cloud-synced) |
 
-**Rule of thumb:** If an AI agent writes to it at runtime → rotunda. If you author it and deploy → chezmoi.
+**Rule of thumb:** If an AI agent writes to it at runtime → rotunda. If you author it and deploy → chezmoi or bootstrap. If it's a single file in `~/` → bootstrap (can't be a root). If it's already cloud-synced → skip it.
 
 ---
 
@@ -186,12 +199,16 @@ rsync -av --delete \
 # Mirror ~/.claude → repo\.claude
 robocopy "$env:USERPROFILE\.claude" ".claude" /MIR `
   /XD node_modules sessions cache telemetry statsig debug todos transcripts `
-  /XF *.log history.jsonl
+      downloads file-history paste-cache plans session-env shell-snapshots `
+      tasks ide backups commands plugins projects `
+  /XF *.log history.jsonl *.credentials* stats-cache.json `
+      policy-limits.json settings.local.json config.json
 
 # Mirror ~/.copilot → repo\.copilot
 robocopy "$env:USERPROFILE\.copilot" ".copilot" /MIR `
-  /XD node_modules logs session-state crash-context `
-  /XF session-store* *.log
+  /XD node_modules logs session-state crash-context ide `
+      installed-plugins marketplace-cache mcp-oauth-config pkg restart `
+  /XF session-store* *.log command-history-state.json config.json
 ```
 
 > **Why mirror first?** The first time rotunda runs, it compares local and repo files. If there are content differences (because the chezmoi snapshot is stale), they show up as conflicts. Mirroring local → repo ensures both sides match, giving rotunda a clean baseline.
@@ -256,8 +273,8 @@ You can either run `rotunda init` to generate a default manifest, or create one 
   "globalExclude": [
     "node_modules",
     ".git",
-    "*.log",
-    "*.tmp",
+    "**/*.log",
+    "**/*.tmp",
     "__pycache__"
   ]
 }
@@ -269,8 +286,8 @@ Map your `.chezmoiignore` entries to rotunda's `exclude` arrays:
 
 | `.chezmoiignore` pattern | Rotunda equivalent | Where |
 |--------------------------|--------------------|-------|
-| `*.log` | `"*.log"` | `globalExclude` |
-| `node_modules` | `"node_modules"` | `globalExclude` |
+| `*.log` | `"**/*.log"` | `globalExclude` (use `**/` to match nested files) |
+| `node_modules` | `"node_modules"` | `globalExclude` (simple names match at any depth) |
 | `.claude/sessions` | `"sessions"` | `roots[claude].exclude` |
 | `README.md` | `"README.md"` | `globalExclude` or per-root |
 
@@ -565,6 +582,159 @@ git commit --no-verify -m "Migrate to rotunda"
 ```
 
 Run `rotunda doctor` after updating — the "Ignore coverage" check will confirm your patterns are filtering files.
+
+### Glob Patterns: `*.log` vs `**/*.log`
+
+**Problem:** You add `*.log` to `globalExclude` expecting all log files to be excluded, but nested log files (e.g., `hooks/sound-debug.log`) still appear in `rotunda status`.
+
+**Cause:** Rotunda uses [minimatch](https://github.com/isaacs/minimatch) for glob matching. The pattern `*.log` only matches files at the root level of each directory — the `*` wildcard does not cross path separators. To match log files at any depth, use `**/*.log`.
+
+**Solution:** Always use `**/*.ext` for file extension patterns in `globalExclude`:
+
+```json
+{
+  "globalExclude": [
+    "node_modules",
+    ".git",
+    "**/*.log",
+    "**/*.tmp",
+    "__pycache__"
+  ]
+}
+```
+
+Note: Simple segment names like `node_modules` (no `/` or `*`) get special treatment — they match against any individual path segment at any depth. This only applies to patterns without glob characters.
+
+### Handling `.copilot/config.json`
+
+**Problem:** `.copilot/config.json` mixes user preferences you want to share across machines (hooks, model, theme, allowTool) with machine-local state that will cause conflicts or corruption if synced:
+
+- `trusted_folders` — absolute paths specific to each machine
+- `installedPlugins` — includes absolute `cache_path` values
+- `loggedInUsers` / `lastLoggedInUser` — per-machine auth state
+- `firstLaunchAt` — machine-specific timestamp
+- `askedSetupTerminals` — machine-specific UI state
+
+**Solution:** Exclude `config.json` from the copilot root entirely:
+
+```json
+{
+  "name": "copilot",
+  "local": "~/.copilot",
+  "repo": ".copilot",
+  "include": ["agents/**", "extensions/**", "hooks/**", "permissions-config.json"],
+  "exclude": ["node_modules", "logs", "session-state", "session-store*", "crash-context",
+              "ide", "installed-plugins", "marketplace-cache", "mcp-oauth-config",
+              "pkg", "restart", "command-history-state.json", "config.json"]
+}
+```
+
+The hook scripts themselves (in `hooks/`) are synced as separate files. Each machine needs its own `config.json` set up manually (or via a bootstrap script).
+
+### Converting Template Scripts to Standalone
+
+**Problem:** Chezmoi install scripts use `{{ include "apps.json" }}` to embed file contents at template render time. Without chezmoi, these templates can't be rendered.
+
+**Solution:** Convert to standalone scripts that read companion files at runtime:
+
+```powershell
+# Before (chezmoi template — requires chezmoi to render)
+$apps = ConvertFrom-Json @'
+{{ include "apps.json" | trim }}
+'@
+
+# After (standalone — reads apps.json from same directory at runtime)
+param([string]$AppsFile = (Join-Path $PSScriptRoot "apps.json"))
+$apps = Get-Content $AppsFile -Raw | ConvertFrom-Json
+```
+
+Place both the script and its data file in `bootstrap/`:
+
+```
+bootstrap/
+├── install.ps1     # Standalone script (no template rendering needed)
+├── install.cmd     # CMD wrapper that delegates to install.ps1
+└── apps.json       # Data file read at runtime
+```
+
+This eliminates the dependency on chezmoi for rendering while preserving the same install behavior.
+
+---
+
+## Full Migration: Rotunda Only (No Chezmoi)
+
+If chezmoi was primarily managing AI agent configs and a few static files, you can remove chezmoi entirely. Move bootstrap scripts to `bootstrap/` and let rotunda handle everything else:
+
+```
+~/dotfiles/
+├── .gitignore                # Ignores .rotunda/
+├── rotunda.json              # Rotunda manifest
+├── .rotunda/                 # Rotunda state (gitignored, per-machine)
+├── README.md
+│
+├── # ── Rotunda-managed (bidirectional sync) ──
+├── .claude/                  # Claude Code runtime config
+│   ├── CLAUDE.md
+│   ├── settings.json
+│   ├── mcp.json
+│   ├── skills/
+│   ├── agents/
+│   └── hooks/
+├── .copilot/                 # Copilot CLI runtime config
+│   ├── permissions-config.json
+│   ├── agents/
+│   ├── extensions/
+│   └── hooks/
+├── clink/                    # Oh-my-posh theme + clink config
+│   ├── .marcusm.omp.json
+│   └── oh-my-posh.lua
+│
+├── # ── Manual deploy (not rotunda-managed) ──
+└── bootstrap/                # One-time setup scripts + static configs
+    ├── install.ps1           # App installer (reads apps.json at runtime)
+    ├── install.cmd           # CMD wrapper
+    ├── apps.json             # Winget app manifest
+    └── dot_npmrc             # .npmrc for work machines (copy manually)
+```
+
+### What to remove:
+
+```bash
+# Remove chezmoi source directories (now .claude/ and .copilot/)
+rm -rf dot_claude dot_copilot
+
+# Remove chezmoi config
+rm -f .chezmoi.toml.tmpl .chezmoiignore .chezmoiroot .chezmoiversion
+rm -rf .chezmoitemplates .local/share/chezmoi
+
+# Remove chezmoi-prefixed files (now in bootstrap/ or rotunda roots)
+rm -f dot_npmrc
+rm -rf AppData  # if managed via a rotunda root like clink/
+rm -rf readonly_*  # cloud-synced files don't need repo management
+
+# Remove chezmoi template scripts (now standalone in bootstrap/)
+rm -f run_once_*.tmpl
+```
+
+### New machine setup (no chezmoi):
+
+```bash
+git clone <dotfiles-repo> ~/dotfiles
+cd ~/dotfiles
+
+# Step 1: Bootstrap (install apps)
+./bootstrap/install.cmd   # or: pwsh bootstrap/install.ps1
+
+# Step 2: Rotunda (sync agent configs)
+npm install -g rotunda     # or: npm link from source
+rotunda init
+rotunda pull -y
+rotunda doctor
+
+# Step 3: Manual steps
+# Copy .npmrc on work machines:
+# cp bootstrap/dot_npmrc ~/.npmrc
+```
 
 ---
 
