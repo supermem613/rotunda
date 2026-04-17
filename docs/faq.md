@@ -19,7 +19,7 @@ No. `.rotunda/` is gitignored. State is per-machine — each machine tracks its 
 The default manifest includes two roots: `~/.claude` (skills, agents, hooks, CLAUDE.md, settings, MCP config) and `~/.copilot` (agents, extensions, hooks, config). Sensitive directories like sessions, cache, credentials, and telemetry are excluded by default.
 
 **Q: Does Rotunda modify my git history?**
-`rotunda push` creates a commit in the config repo with the synced files. It uses a simple commit message like `rotunda push — 5 file(s)`. It does not force-push, rebase, or modify existing history.
+`rotunda push` creates a commit in the dotfiles repo with the synced files. It uses a simple commit message like `rotunda push — 5 file(s)`. It does not force-push, rebase, or modify existing history.
 
 **Q: Can I use Rotunda without git?**
 The sync engine itself doesn't require git — it works with plain directories and SHA-256 hashes. However, the push command auto-commits changes, and the diff command uses `git diff --no-index` for terminal output. A git repo is strongly recommended.

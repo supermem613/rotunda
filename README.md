@@ -45,20 +45,20 @@ Rotunda solves this with **bidirectional sync**: local changes push to the repo,
 
 ## ⚡ Quick Start
 
-> **TL;DR** — Clone a config repo, install Rotunda, run `rotunda init`, then `rotunda push` to sync your local AI agent configs into the repo.
+> **TL;DR** — Clone a dotfiles repo, install Rotunda, run `rotunda init`, then `rotunda push` to sync your local AI agent configs into the repo.
 
-### 1. Create your config repo
+### 1. Create your dotfiles repo
 
 ```bash
-mkdir my-agent-configs && cd my-agent-configs
+mkdir my-dotfiles && cd my-dotfiles
 git init
 ```
 
 Or clone an existing one:
 
 ```bash
-git clone https://github.com/you/my-agent-configs.git
-cd my-agent-configs
+git clone https://github.com/you/my-dotfiles.git
+cd my-dotfiles
 ```
 
 ### 2. Install Rotunda
@@ -78,7 +78,7 @@ rotunda auth
 ### 4. Initialize
 
 ```bash
-cd /path/to/my-agent-configs
+cd /path/to/my-dotfiles
 rotunda init
 ```
 
@@ -248,7 +248,7 @@ git push                # Push to remote
 ### Second machine: pull changes
 
 ```bash
-cd ~/my-agent-configs
+cd ~/my-dotfiles
 git pull                # Get latest from remote
 rotunda pull            # Apply repo changes to local directories
 ```
@@ -265,8 +265,8 @@ rotunda sync            # Detects changes on both sides
 
 ```bash
 # On a fresh machine
-git clone https://github.com/you/my-agent-configs.git
-cd my-agent-configs
+git clone https://github.com/you/my-dotfiles.git
+cd my-dotfiles
 npm install -g rotunda   # or npm link from source
 rotunda init             # Creates state from existing files
 rotunda pull -y          # Pull everything from repo to local
@@ -279,7 +279,7 @@ rotunda pull -y          # Pull everything from repo to local
 
 ### `rotunda.json`
 
-The manifest lives at the root of your config repo:
+The manifest lives at the root of your dotfiles repo:
 
 ```jsonc
 {
