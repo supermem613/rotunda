@@ -8,9 +8,9 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "node --import tsx --test 'test/**/*.test.ts'",
-    "test:unit": "node --import tsx --test 'test/unit/**/*.test.ts'",
-    "test:integration": "node --import tsx --test 'test/integration/**/*.test.ts'",
+    "test": "node test/run.mjs test/**/*.test.ts",
+    "test:unit": "node test/run.mjs test/unit/**/*.test.ts",
+    "test:integration": "node test/run.mjs test/integration/**/*.test.ts",
     "lint": "tsc --noEmit",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run build"
