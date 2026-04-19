@@ -301,7 +301,6 @@ src/
 │   ├── init.ts         # rotunda init — manifest creation + initial state
 │   ├── status.ts       # rotunda status — three-way diff display
 │   ├── diff.ts         # rotunda diff — file-level diff output
-│   ├── describe.ts     # rotunda describe — LLM-powered diff analysis
 │   ├── push.ts         # rotunda push — local → repo sync
 │   ├── pull.ts         # rotunda pull — repo → local sync
 │   ├── sync.ts         # rotunda sync — bidirectional sync

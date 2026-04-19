@@ -1,32 +1,22 @@
 /**
- * LLM prompt templates for review, reshape, and describe flows.
+ * LLM prompt templates for review and reshape flows.
+ *
+ * - `buildExplainPrompt` — single-file change explanation (used by review).
+ * - `buildReshapePrompt` — interactive content reshape proposal (used by review).
+ * - `buildConflictPrompt` — three-way conflict explanation (used by review).
+ *
+ * All prompts return a `PromptPair` (system + user message) which callers feed
+ * directly into `ask()` from `llm/copilot.ts`. Keeping templates pure and
+ * dependency-free means they're trivially unit-testable.
  */
 
 import type { FileChange } from "../core/types.js";
-import {
-  estimateTokens,
-  truncateToTokenBudget,
-  truncateDiff,
-  MAX_PROMPT_TOKENS,
-} from "./tokens.js";
+import { estimateTokens, truncateToTokenBudget, truncateDiff, MAX_PROMPT_TOKENS } from "./tokens.js";
 
-interface PromptPair {
+/** A system + user prompt pair, ready to send to the LLM. */
+export interface PromptPair {
   system: string;
   user: string;
-}
-
-// ─── Describe types ──────────────────────────────────────────
-
-/** Input to `buildDescribePrompt` — one entry per changed file. */
-export interface DescribeFileInput {
-  path: string;
-  root: string;
-  action: string;
-  side: string;
-  /** Plain (uncolored) unified diff for modified/conflict files. */
-  diff: string;
-  /** Full file content for added/deleted files (may be null). */
-  content: string | null;
 }
 
 // ─── Per-file budget helper ──────────────────────────────────
@@ -37,16 +27,14 @@ function capFilePayload(
   content: string | null,
   budgetTokens: number,
 ): { diff: string; content: string | null } {
-  // Reserve a small fixed amount for metadata lines (path, action, etc.)
-  const metaOverhead = 50; // ~50 tokens for framing
+  const metaOverhead = 50;
   let remaining = budgetTokens - metaOverhead;
-  if (remaining < 200) remaining = 200; // absolute floor
+  if (remaining < 200) remaining = 200;
 
   let cappedDiff = diff;
   let cappedContent = content;
 
   if (diff) {
-    // Diff gets 70% of the budget, content gets 30%
     const diffBudget = content != null
       ? Math.floor(remaining * 0.7)
       : remaining;
@@ -60,24 +48,6 @@ function capFilePayload(
   }
 
   return { diff: cappedDiff, content: cappedContent };
-}
-
-/**
- * Estimate the raw (untruncated) token cost of a single describe file entry.
- * Used by the batching layer to decide whether files fit in one call.
- */
-export function estimateDescribeFileTokens(f: DescribeFileInput): number {
-  let tokens = 50; // metadata overhead (path, action, fences, separators)
-  if (f.diff) tokens += estimateTokens(f.diff);
-  if (f.content != null) tokens += estimateTokens(f.content);
-  return tokens;
-}
-
-/**
- * Return the token cost of the describe system prompt (constant per call).
- */
-export function getDescribeSystemTokens(): number {
-  return estimateTokens(DESCRIBE_SYSTEM_PROMPT) + 100; // +100 for framing
 }
 
 export function buildExplainPrompt(
@@ -189,73 +159,6 @@ export function buildConflictPrompt(
     `Changes in the repo since last sync:\n\`\`\`diff\n${cappedRepoDiff}\n\`\`\`\n\n` +
     `Changes locally since last sync:\n\`\`\`diff\n${cappedLocalDiff}\n\`\`\`\n\n` +
     `Please analyze whether these changes overlap and suggest how to merge them.`;
-
-  return { system, user };
-}
-
-// ─── Describe system prompt (shared constant) ───────────────
-
-const DESCRIBE_SYSTEM_PROMPT =
-  "You are a senior developer analyzing configuration file changes for a sync tool. " +
-  "The user wants to understand what changed across all files.\n\n" +
-  "Respond with a JSON object (no markdown fences, no explanation outside the JSON) matching this schema:\n" +
-  "{\n" +
-  '  "overview": "2-3 sentences summarizing the overall theme and impact of all changes",\n' +
-  '  "files": [\n' +
-  "    {\n" +
-  '      "path": "relative/path",\n' +
-  '      "root": "root-name",\n' +
-  '      "action": "added|modified|deleted|conflict",\n' +
-  '      "summary": "1-2 sentence summary of what changed in this file",\n' +
-  '      "chunks": [\n' +
-  '        { "header": "@@ line range or short label", "description": "What this chunk does and why it matters" }\n' +
-  "      ],\n" +
-  '      "observations": ["optional noteworthy things: patterns, risks, suggestions"]\n' +
-  "    }\n" +
-  "  ]\n" +
-  "}\n\n" +
-  "Rules:\n" +
-  "- For added/deleted files with no diff hunks, use a single chunk with header 'entire file'.\n" +
-  "- Keep descriptions factual and concise.\n" +
-  "- observations is optional — only include when genuinely useful.\n" +
-  "- Output ONLY the JSON object. No surrounding text.";
-
-export function buildDescribePrompt(
-  files: DescribeFileInput[],
-  tokenBudget = MAX_PROMPT_TOKENS,
-): PromptPair {
-  const system = DESCRIBE_SYSTEM_PROMPT;
-
-  // ── Per-file budget ────────────────────────────────────────
-  const systemTokens = estimateTokens(system);
-  const framingOverhead = 100; // "Analyze these N changed file(s):" + separators
-  const availableTokens = tokenBudget - systemTokens - framingOverhead;
-  const perFileBudget = Math.max(
-    200,
-    Math.floor(availableTokens / Math.max(files.length, 1)),
-  );
-
-  const parts: string[] = [];
-  for (const f of files) {
-    const { diff: cappedDiff, content: cappedContent } = capFilePayload(
-      f.diff,
-      f.content,
-      perFileBudget,
-    );
-
-    let entry = `File: ${f.root}/${f.path}\nAction: ${f.action} (${f.side})`;
-    if (cappedDiff) {
-      entry += `\nDiff:\n\`\`\`diff\n${cappedDiff}\n\`\`\``;
-    }
-    if (cappedContent != null) {
-      entry += `\nContent:\n\`\`\`\n${cappedContent}\n\`\`\``;
-    }
-    parts.push(entry);
-  }
-
-  const user =
-    `Analyze these ${files.length} changed file(s):\n\n` +
-    parts.join("\n\n---\n\n");
 
   return { system, user };
 }

@@ -45,20 +45,20 @@ Rotunda solves this with **bidirectional sync**: local changes push to the repo,
 
 ## ⚡ Quick Start
 
-> **TL;DR** — Clone a dotfiles repo, install Rotunda, run `rotunda init`, then `rotunda push` to sync your local AI agent configs into the repo.
+> **TL;DR** — Install Rotunda, bind it to your dotfiles repo, then `rotunda sync` to reconcile local and repo in one interactive pass.
 
-### 1. Create your dotfiles repo
+### 1. Get your dotfiles repo
+
+Clone an existing one:
 
 ```bash
-mkdir my-dotfiles && cd my-dotfiles
-git init
+git clone https://github.com/you/my-dotfiles.git ~/my-dotfiles
 ```
 
-Or clone an existing one:
+Or create a fresh one and `rotunda init` it later:
 
 ```bash
-git clone https://github.com/you/my-dotfiles.git
-cd my-dotfiles
+mkdir ~/my-dotfiles && cd ~/my-dotfiles && git init
 ```
 
 ### 2. Install Rotunda
@@ -69,55 +69,54 @@ cd ~/rotunda
 npm install && npm run build && npm link
 ```
 
-### 3. Authenticate (optional — enables LLM review)
+### 3. Bind (existing repo) or initialize (new repo)
+
+```bash
+# Existing repo with rotunda.json already in it
+rotunda bind ~/my-dotfiles
+
+# OR — fresh repo: init creates rotunda.json AND binds in one shot
+cd ~/my-dotfiles && rotunda init
+```
+
+`bind`/`init` writes `~/.rotunda.json` so every later command works from any directory — no need to `cd` back.
+
+### 4. Authenticate (optional — enables LLM review)
 
 ```bash
 rotunda auth
 ```
 
-### 4. Initialize
+Without auth, sync still works — you just get a y/n prompt instead of LLM explanations.
+
+### 5. Run your first sync
 
 ```bash
-cd /path/to/my-dotfiles
-rotunda init
+rotunda sync
 ```
 
-This creates:
-- **`rotunda.json`** — manifest with sensible defaults for `~/.claude` and `~/.copilot`
-- **`.rotunda/`** — state directory (gitignored) tracking file hashes per machine
-- **`.gitignore`** — updated to exclude `.rotunda/`
-- **`~/.rotunda.json`** — global config that **binds** rotunda to this repo, so every other command works from any directory
-
-> If you've already bound a different repo, `init` will warn and skip the bind step. Use `rotunda bind` to switch.
-
-### 5. See what's out there
-
-From **anywhere** on your machine:
-
-```bash
-rotunda status
-```
+The first sync on a fresh clone almost always shows lots of changes — local has files the repo doesn't, the repo has files local doesn't, and some files differ on both sides. The interactive TUI lets you triage all of them in one pass:
 
 ```
-  12 change(s) detected:
+  rotunda sync — 12 file(s)
 
-  [claude]
-    added  skills/commit/SKILL.md          (local)
-    added  skills/pr-review/SKILL.md       (local)
-    added  hooks/pre-commit.json           (local)
+  ◯ PUSH        .claude/skills/commit/SKILL.md            (local-only)
+  ◯ PULL        .copilot/extensions/the-shadow.json       (repo-only)
+  ◯ PUSH        .claude/skills/pr-review/SKILL.md         (modified, local newer)
+  ⚠ CONFLICT    .copilot/permissions-config.json          (both sides changed)
+  ...
 
-  [copilot]
-    added  extensions/code-review/index.js (local)
-    added  agents/the-shadow.json          (local)
-
-  Summary: 12 added
+  ↑/↓ navigate  ←/→ change action  ENTER show diff  m merge  R repo-wins  L local-wins
+  [a] apply  ·  [ESC] cancel & quit
 ```
 
-Now push your local configs to the repo:
+- **←/→** cycle the per-row action: `PUSH` / `PULL` / `DELETE-LOCAL` / `DELETE-REPO` / `SKIP`.
+- **ENTER** opens a scrollable diff overlay (ESC to close).
+- **R** / **L** bulk-pick a winner for every row at once (handy on first sync).
+- **m** drops a conflict into a `<<<<<<<` merge file you can resolve in your editor.
+- **a** applies your selections; **ESC** cancels with no changes.
 
-```bash
-rotunda push
-```
+After sync, your local and repo are in lock-step. From here on, just run `rotunda sync` whenever you've made changes on either side.
 
 ---
 
@@ -210,7 +209,6 @@ rotunda list
 | `rotunda auth [--force]` | Authenticate with GitHub Copilot (device flow) |
 | `rotunda bind [path]` | Bind rotunda to a dotfiles repo (defaults to cwd). `--show` prints current binding, `--unset` clears it |
 | `rotunda cd` | Spawn a subshell whose working directory is the bound dotfiles repo |
-| `rotunda describe [root]` | LLM-powered per-file, per-chunk change analysis for modified files |
 | `rotunda diff [root]` | Show file-level diffs for modified files |
 | `rotunda doctor [--fix]` | Structural health check; `--fix` uses LLM to suggest and apply repairs |
 | `rotunda home` | Spawn a subshell whose working directory is the rotunda source repo |
@@ -234,41 +232,6 @@ rotunda diff --open       # Open each changed file in VS Code diff viewer
 rotunda diff --html       # Generate interactive HTML diff report
 ```
 
-### Describe (LLM Analysis)
-
-```bash
-rotunda describe          # LLM-powered breakdown of all changes
-rotunda describe claude   # Describe only the "claude" root
-```
-
-Sends change data (diffs and file contents) to GitHub Copilot and returns a structured analysis. For raw diffs, use `rotunda diff`.
-
-For large changesets that exceed the model's token limit, describe automatically batches files across multiple LLM calls and merges the results.
-
-```
-  ──────────────────────────────────────────────────────────────
-    🤖 Analysis  powered by GitHub Copilot
-  ──────────────────────────────────────────────────────────────
-
-  📋 Overview
-
-  Two configuration files updated to add SQL injection
-  detection and improve hook performance.
-
-  📁 claude / skills/pr-review/SKILL.md  modified
-  │
-  │  Added regex pattern for SQL injection detection in
-  │  string interpolation contexts.
-  │
-  ├─ @@ -12,6 +12,8 @@
-  │  New regex pattern catches backtick-interpolated SQL
-  │  strings, complementing the existing XSS checks.
-  │
-  └─ 💡 Consider adding a test case for parameterized queries
-```
-
-Requires authentication (`rotunda auth`). Uses GitHub Copilot to analyze changes.
-
 ### Push/Pull Flags
 
 ```bash
@@ -281,41 +244,45 @@ rotunda sync -y    # Sync all non-conflicting changes without review
 
 ## 🔄 Typical Workflow
 
-> All `rotunda` commands below work from **any directory**. After `rotunda init`, the binding in `~/.rotunda.json` tells rotunda which repo to operate on.
+> All `rotunda` commands below work from **any directory**. After `rotunda bind` (or `rotunda init`), the binding in `~/.rotunda.json` tells rotunda which repo to operate on.
 
-### Single machine: edit and push
+### Daily driver: `rotunda sync`
 
 ```bash
-# You modified a Claude skill locally
-rotunda status          # See what changed
-rotunda diff claude     # Review the diff
-rotunda push            # Copilot explains each change, you approve → committed and pushed
+rotunda sync            # The one command you'll use 95% of the time
 ```
 
-### Second machine: pull changes
+`sync` auto-pulls from the remote, detects what changed on both sides, drops you in an interactive TUI to triage, then commits and pushes the result. It handles single-direction edits (local-only or repo-only changes) just as well as true two-sided conflicts.
+
+If a sync run shows nothing to do, you're done. If it shows changes, the TUI walks you through them — see the [Quick Start](#-quick-start) for the keybindings.
+
+### One-direction shortcuts (when you know which side wins)
 
 ```bash
-rotunda pull            # Auto-pulls from remote, applies repo changes to local
+rotunda push            # local → repo only (e.g., publishing a finished change)
+rotunda pull            # repo → local only (e.g., pulling teammate's update)
 ```
 
-### Both machines changed: sync
+These are sub-modes of sync. Reach for them when you want explicit control; otherwise prefer `sync`.
+
+### Brand-new machine
 
 ```bash
-rotunda sync            # Auto-pulls from remote, detects changes on both sides
-                        # Non-conflicting changes sync automatically
-                        # Conflicts are surfaced for LLM-assisted resolution
-```
-
-### New machine setup
-
-```bash
-# On a fresh machine
 git clone https://github.com/you/my-dotfiles.git ~/my-dotfiles
-cd ~/my-dotfiles
-npm install -g rotunda   # or npm link from source
-rotunda init             # Creates state AND binds rotunda to this repo
-rotunda pull -y          # Auto-pulls from remote and applies everything to local
-# Done — all your AI agent configs are in place, and you can `rotunda cd` from anywhere
+git clone https://github.com/supermem613/rotunda.git ~/rotunda && cd ~/rotunda
+npm install && npm run build && npm link
+rotunda bind ~/my-dotfiles
+rotunda auth            # optional: enables LLM review
+rotunda sync            # interactive: choose what to keep on first run
+```
+
+### Inspecting before syncing
+
+```bash
+rotunda status          # what changed since last sync (no LLM, no I/O)
+rotunda diff            # raw unified diffs (file-level)
+rotunda diff --html     # interactive HTML diff report
+rotunda doctor          # 10 health checks (manifest, state, git, ...)
 ```
 
 ### Self-update
@@ -333,7 +300,7 @@ Rotunda binds itself to **one dotfiles repo per machine** so every command works
 ### How binding works
 
 - `rotunda init` writes the bound repo path into `~/.rotunda.json` (a global config file in your home directory).
-- All subsequent commands — `status`, `push`, `pull`, `sync`, `diff`, `describe`, `list`, `doctor` — read that path and operate on the bound repo, regardless of your current working directory.
+- All subsequent commands — `status`, `push`, `pull`, `sync`, `diff`, `list`, `doctor` — read that path and operate on the bound repo, regardless of your current working directory.
 - There is **no environment variable** and **no walk-up-the-tree discovery**. The global config is the single source of truth. This keeps behavior predictable across shells, terminals, IDEs, and CI.
 
 ### `~/.rotunda.json`
@@ -465,7 +432,7 @@ cd rotunda
 npm install && npm run build && npm link
 ```
 
-Verify: `rotunda --version`
+Verify: `rotunda` (prints version + help)
 
 ---
 

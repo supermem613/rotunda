@@ -7,7 +7,6 @@ import { dirname, join } from "node:path";
 import { authCommand } from "./commands/auth.js";
 import { bindCommand } from "./commands/bind.js";
 import { cdCommand } from "./commands/cd.js";
-import { describeCommand } from "./commands/describe.js";
 import { diffCommand } from "./commands/diff.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { homeCommand } from "./commands/home.js";
@@ -58,12 +57,6 @@ program
   .command("cd")
   .description("Open a subshell inside the bound dotfiles repo (exit to return)")
   .action(cdCommand);
-
-program
-  .command("describe")
-  .description("Show diffs with LLM-powered analysis (per-file, per-chunk breakdown)")
-  .argument("[root]", "Filter to a specific sync root")
-  .action(describeCommand);
 
 program
   .command("diff")

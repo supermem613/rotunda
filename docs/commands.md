@@ -13,7 +13,6 @@ rotunda <command> [options]
 | `rotunda init`     | Initialize manifest and state in the current repo    |
 | `rotunda status`   | Show what changed since the last sync                |
 | `rotunda diff`     | Show file-level diffs for modified files             |
-| `rotunda describe` | LLM-powered per-file, per-chunk change analysis      |
 | `rotunda push`     | Push local changes to the repo                       |
 | `rotunda pull`     | Pull repo changes to local                           |
 | `rotunda sync`     | Bidirectional sync with conflict resolution          |
@@ -193,61 +192,6 @@ rotunda diff claude          # Only show diffs for the claude root
 rotunda diff copilot --stat  # Summary for copilot root only
 ```
 
----
-
-## `rotunda describe`
-
-LLM-powered analysis of all changes since the last sync. Sends diffs and file contents to GitHub Copilot and returns a structured breakdown per file.
-
-For raw diffs without LLM analysis, use `rotunda diff`.
-
-**Synopsis:**
-
-```
-rotunda describe [root]
-```
-
-**Arguments:**
-
-| Argument | Description |
-|----------|-------------|
-| `root`   | Optional root name to limit analysis (e.g., `claude`) |
-
-**What it does:**
-
-1. Gathers plain diffs (modified/conflict files) and full content (added/deleted files) for all changed files.
-2. Sends the data to GitHub Copilot for analysis.
-3. Displays a structured breakdown: an overall summary, per-file summaries, per-chunk descriptions, and optional observations.
-
-**Adaptive batching:** If the total changeset exceeds the model's token limit (~121K tokens), describe automatically splits files into batches, sends each batch separately, and merges the results. Individual files that are too large are truncated on hunk boundaries as a last resort.
-
-**Requires:** Authentication via `rotunda auth`.
-
-**Output example:**
-
-```
-  ──────────────────────────────────────────────────────────────
-    🤖 Analysis  powered by GitHub Copilot
-  ──────────────────────────────────────────────────────────────
-
-  📋 Overview
-
-  Two configuration files updated to add SQL injection
-  detection and improve hook performance.
-
-  📁 claude / skills/pr-review/SKILL.md  modified
-  │
-  │  Added regex pattern for SQL injection detection in
-  │  string interpolation contexts.
-  │
-  ├─ @@ -12,6 +12,8 @@
-  │  New regex pattern catches backtick-interpolated SQL
-  │  strings, complementing the existing XSS checks.
-  │
-  └─ 💡 Consider adding a test case for parameterized queries
-```
-
----
 
 ## `rotunda push`
 
@@ -603,7 +547,7 @@ rotunda auth [--force]
 
 **What it does:**
 
-Initiates a [GitHub device flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow) to obtain a Copilot API token for the LLM review features used during push, pull, sync, and describe.
+Initiates a [GitHub device flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow) to obtain a Copilot API token for the LLM review features used during push, pull, and sync.
 
 If a valid token already exists, `rotunda auth` exits early with a success message. Use `--force` to clear the existing token and start a fresh device flow — useful when tokens are corrupted or you need to switch GitHub accounts.
 

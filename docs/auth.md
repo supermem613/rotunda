@@ -135,7 +135,6 @@ All core sync operations work without authentication. LLM-assisted review is an 
 | `rotunda push` (interactive review) | Yes |
 | `rotunda pull` (interactive review) | Yes |
 | `rotunda sync` (conflict resolution) | Yes |
-| `rotunda describe [root]` | Yes           |
 | `rotunda doctor`         | No             |
 
 When authentication is not configured, rotunda falls back to basic review mode:
