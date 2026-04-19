@@ -123,7 +123,7 @@ export async function runTui(opts: RunTuiOptions): Promise<TuiResult> {
       if (state.view === "diff" && before.view !== "diff") {
         const idx = state.cursor;
         const row = state.rows[idx];
-        if (row && !row.diff) {
+        if (row && !row.diffLines) {
           void loadDiff(idx, opts).then((diff) => push({ type: "diff-loaded", rowIndex: idx, diff }));
         }
       }

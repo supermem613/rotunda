@@ -9,6 +9,7 @@ import {
   actionCounts,
   actionCycle,
   listPageSize,
+  normalizeDiff,
   type AppState,
   type Event,
   type Key,
@@ -310,6 +311,41 @@ describe("actionCounts", () => {
     const counts = actionCounts(s);
     assert.equal(counts.push, 2);
     assert.equal(counts.conflict, 1);
+  });
+});
+
+describe("normalizeDiff", () => {
+  it("strips CR so Windows-style diffs don't overwrite mid-frame", () => {
+    assert.deepEqual(normalizeDiff("a\r\nb\r\nc"), ["a", "b", "c"]);
+  });
+
+  it("expands tabs to four spaces so padRow's width math matches display", () => {
+    assert.deepEqual(normalizeDiff("\tindent\nplain"), ["    indent", "plain"]);
+  });
+
+  it("preserves empty trailing lines", () => {
+    assert.deepEqual(normalizeDiff("a\n\nb\n"), ["a", "", "b", ""]);
+  });
+});
+
+describe("diff-loaded caches pre-split lines on the row", () => {
+  it("stores diffLines, not a raw diff string", () => {
+    let s: AppState = initialState([fc({ action: "modified", side: "local" })], vp());
+    s = reduce(s, k("enter"));
+    s = reduce(s, { type: "diff-loaded", rowIndex: 0, diff: "line1\r\nline2\nline3" });
+    assert.deepEqual(s.rows[0].diffLines, ["line1", "line2", "line3"]);
+  });
+
+  it("scroll math uses the cached length — no need to re-split on scroll", () => {
+    // 30 diff lines, viewport 24 rows → diff page = 21, max scroll = 9.
+    let s: AppState = initialState([fc({ action: "modified", side: "local" })], vp());
+    s = reduce(s, k("enter"));
+    const diff = Array.from({ length: 30 }, (_, i) => `L${i}`).join("\n");
+    s = reduce(s, { type: "diff-loaded", rowIndex: 0, diff });
+    s = reduce(s, k("end"));
+    assert.equal(s.diffScroll, 9);
+    // Sanity: cached lines count is the source of truth.
+    assert.equal(s.rows[0].diffLines?.length, 30);
   });
 });
 

@@ -45,8 +45,16 @@ export interface Row {
    * and can decide whether to retry, pick a side, or defer.
    */
   mergeError?: string;
-  /** Cached unified diff string, populated lazily when the modal opens. */
-  diff?: string;
+  /**
+   * Cached unified diff, pre-normalized (CR stripped, tabs expanded) and
+   * split into lines. Populated lazily when the modal opens.
+   *
+   * Stored as a string[] (not the raw string) because rendering the diff
+   * view and clamping scroll each need an array of lines. Normalising and
+   * splitting once on diff-loaded — rather than on every keypress — keeps
+   * ESC / scroll responsive when the diff is large.
+   */
+  diffLines?: string[];
 }
 
 /** Top-level view of the TUI. Each maps to a different render function. */
@@ -219,7 +227,10 @@ export function reduce(state: AppState, event: Event): AppState {
 
     case "diff-loaded": {
       const rows = base.rows.slice();
-      rows[event.rowIndex] = { ...rows[event.rowIndex], diff: event.diff };
+      rows[event.rowIndex] = {
+        ...rows[event.rowIndex],
+        diffLines: normalizeDiff(event.diff),
+      };
       const next = { ...base, rows };
       // Re-clamp scroll now that we know real line count (handles
       // user pressing 'end' / pagedown before diff finished loading).
@@ -557,11 +568,25 @@ export function diffPageSize(state: AppState): number {
  */
 function setDiffScroll(state: AppState, requested: number): AppState {
   const row = state.rows[state.cursor];
-  const diff = row?.diff ?? "";
-  const totalLines = diff ? diff.split("\n").length : 0;
+  const totalLines = row?.diffLines?.length ?? 0;
   const max = Math.max(0, totalLines - diffPageSize(state));
   const clamped = Math.max(0, Math.min(requested, max));
   return { ...state, diffScroll: clamped };
+}
+
+/**
+ * Normalise a raw unified diff into an array of lines ready for the diff
+ * view. Strips CRs (Windows line endings would wrap the cursor back to
+ * col 0 mid-frame and overwrite earlier output) and expands tabs so
+ * padRow's width math matches what the terminal actually displays.
+ *
+ * Runs once when diff-loaded fires — not on every frame or scroll
+ * keystroke. For a multi-megabyte diff this moves O(N) work out of the
+ * render path, which is the difference between an instant ESC-to-list
+ * and a visibly laggy one.
+ */
+export function normalizeDiff(diff: string): string[] {
+  return diff.replace(/\r/g, "").replace(/\t/g, "    ").split("\n");
 }
 
 function firstVisible(state: AppState): number {

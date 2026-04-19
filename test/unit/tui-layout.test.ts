@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { render, stripAnsi } from "../../src/tui/layout.js";
+import { render, renderFrame, stripAnsi } from "../../src/tui/layout.js";
 import { initialState, reduce, type AppState } from "../../src/tui/state.js";
 import type { FileChange } from "../../src/core/types.js";
 
@@ -90,6 +90,63 @@ describe("layout / diff modal", () => {
     assert.equal(state.diffScroll, 100 - 21);
     state = reduce(state, { type: "key", key: { name: "home" } });
     assert.equal(state.diffScroll, 0);
+  });
+});
+
+describe("layout / diff modal uses cached lines", () => {
+  it("renders normalized content (CR stripped, tabs expanded)", () => {
+    let state: AppState = initialState([fc({ action: "modified", side: "local" })], { cols: 80, rows: 24 });
+    state = reduce(state, { type: "key", key: { name: "enter" } });
+    // Mixed Windows line endings + a leading tab that should expand to 4 spaces.
+    state = reduce(state, { type: "diff-loaded", rowIndex: 0, diff:
+      "+++ a/b\r\n\told\r\n+new" });
+    const out = stripAnsi(render(state));
+    // Tab expanded to four spaces, CR gone.
+    assert.match(out, /^    old$/m);
+    assert.doesNotMatch(out, /\r/);
+  });
+
+  it("shows loading placeholder before diff-loaded fires", () => {
+    let state: AppState = initialState([fc({ action: "modified", side: "local" })], { cols: 80, rows: 24 });
+    state = reduce(state, { type: "key", key: { name: "enter" } });
+    // No diff-loaded event yet — row.diffLines is undefined.
+    const out = stripAnsi(render(state));
+    assert.match(out, /loading diff…/);
+  });
+});
+
+describe("renderFrame / frame reset sequence", () => {
+  // These assertions guard the perf fix: a bare \x1b[H + per-line \x1b[K
+  // overwrite is drastically cheaper on Windows ConPTY than \x1b[2J every
+  // frame. If a future change re-adds \x1b[2J, this test should fail so
+  // the regression is caught before users see lag after a big diff.
+  it("starts with cursor-home, not full-screen clear", () => {
+    const state: AppState = initialState([fc()], { cols: 80, rows: 24 });
+    const frame = renderFrame(state);
+    assert.ok(frame.startsWith("\x1b[H"), "frame must start with \\x1b[H");
+    assert.ok(!frame.includes("\x1b[2J"), "frame must not full-screen clear");
+  });
+
+  it("ends with erase-to-end-of-screen", () => {
+    const state: AppState = initialState([fc()], { cols: 80, rows: 24 });
+    const frame = renderFrame(state);
+    assert.ok(frame.endsWith("\x1b[J"), "frame must end with \\x1b[J to clear any trailing old content");
+  });
+
+  it("every visible row ends with clear-to-EOL so content is overwritten in place", () => {
+    const state: AppState = initialState(
+      Array.from({ length: 5 }, (_, i) => fc({ relativePath: `f${i}.md` })),
+      { cols: 80, rows: 24 },
+    );
+    const frame = renderFrame(state);
+    // Split on real newlines — every rendered line should carry \x1b[K
+    // (safe because we never write a line without passing it through padRow).
+    const lines = frame.split("\n");
+    for (const line of lines) {
+      // Empty padding lines are the only exception: padRow pads to max width
+      // then appends \x1b[K, so every line produced by our renderers has it.
+      assert.ok(line.includes("\x1b[K"), `line missing \\x1b[K: ${JSON.stringify(line.slice(0, 60))}`);
+    }
   });
 });
 

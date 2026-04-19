@@ -18,7 +18,22 @@ import {
 import { colorAction, actionEffect, rowAnnotation } from "./theme.js";
 
 const ANSI_HIDE_CURSOR = "\x1b[?25l";
-const ANSI_CLEAR = "\x1b[2J\x1b[H";
+// Cursor home: move to (1,1) without clearing the screen first. Each rendered
+// line must end with \x1b[K (clear-to-EOL, see EOL below) so stale content is
+// overwritten in place as we draw. Avoiding \x1b[2J removes the blank-flash
+// between frames and, more importantly, the per-frame full-screen redraw that
+// Windows ConPTY charges dearly for — e.g., when exiting a large diff view
+// back to the list.
+const ANSI_HOME = "\x1b[H";
+// Clear-to-end-of-line. Every line in a rendered frame ends with this so
+// any longer content from the previous frame at the same row gets erased.
+// Exported so all line-producing helpers (padRow, separator, blank pads,
+// filter-input overlay) can attach it consistently.
+const EOL = "\x1b[K";
+// Erase from cursor to end of screen. Appended after the frame as a belt-and-
+// suspenders: if a future frame ever renders fewer lines than the previous one,
+// the leftover rows below our output still get cleared.
+const ANSI_CLEAR_AFTER = "\x1b[J";
 
 /** Top-level renderer chooses between list / diff / preview / filter. */
 export function render(state: AppState): string {
@@ -31,9 +46,9 @@ export function render(state: AppState): string {
   }
 }
 
-/** Convenience: full-screen reset + render. Used by screen.ts on each tick. */
+/** Convenience: home-cursor + render + erase-below. Used by screen.ts on each tick. */
 export function renderFrame(state: AppState): string {
-  return ANSI_CLEAR + ANSI_HIDE_CURSOR + render(state);
+  return ANSI_HOME + ANSI_HIDE_CURSOR + render(state) + ANSI_CLEAR_AFTER;
 }
 
 // ────────────────────────────────────────────────────────────
@@ -54,16 +69,17 @@ function renderList(state: AppState): string {
   const end = Math.min(visible.length, start + page);
 
   if (visible.length === 0) {
-    lines.push(centered("(no rows match current filter)", cols));
-    // Pad to page height
-    for (let i = 1; i < page; i++) lines.push("");
+    lines.push(padRow(centered("(no rows match current filter)", cols), cols));
+    // Pad to page height. EOL on every blank line so it overwrites any
+    // leftover content from the previous frame at this row.
+    for (let i = 1; i < page; i++) lines.push(EOL);
   } else {
     for (let i = start; i < end; i++) {
       const rowIdx = visible[i];
       lines.push(renderRow(state, state.rows[rowIdx], rowIdx === state.cursor, cols));
     }
     // Pad
-    for (let i = end - start; i < page; i++) lines.push("");
+    for (let i = end - start; i < page; i++) lines.push(EOL);
   }
 
   lines.push(separator(cols));
@@ -164,13 +180,10 @@ function renderDiff(state: AppState): string {
   lines.push(separator(cols));
 
   const page = diffPageSize(state);
-  // Strip CR (Windows line endings) and expand tabs so the terminal doesn't
-  // carriage-return back to col 0 mid-frame and overwrite earlier output,
-  // and so padRow's width math matches what the terminal actually displays.
-  const diffLines = (row.diff ?? "(loading diff…)")
-    .replace(/\r/g, "")
-    .replace(/\t/g, "    ")
-    .split("\n");
+  // Lines are normalised (CR stripped, tabs expanded) and cached on the row
+  // by the reducer's diff-loaded handler, so this render is a pure slice —
+  // no per-frame O(N) string work, even for multi-megabyte diffs.
+  const diffLines = row.diffLines ?? ["(loading diff…)"];
   const start = Math.min(state.diffScroll, Math.max(0, diffLines.length - page));
   const end = Math.min(diffLines.length, start + page);
 
@@ -188,7 +201,7 @@ function renderDiff(state: AppState): string {
       lines.push(padRow(chalk.dim(line), cols));
     }
   }
-  for (let i = end - start; i < page; i++) lines.push("");
+  for (let i = end - start; i < page; i++) lines.push(EOL);
 
   lines.push(padRow(
     chalk.dim("ESC/q close · ↑/↓ scroll · PgUp/PgDn page · Home/End jump · ←/→ change action · m merge · e edit · d defer"),
@@ -209,32 +222,32 @@ function renderPreview(state: AppState): string {
 
   lines.push(padRow(chalk.bold("APPLY PREVIEW"), cols));
   lines.push(separator(cols));
-  lines.push("");
-  lines.push("  Pending operations:");
+  lines.push(EOL);
+  lines.push(padRow("  Pending operations:", cols));
   for (const [action, count] of Object.entries(counts) as [keyof typeof counts, number][]) {
     if (count === 0) continue;
     if (action === "skip") continue;
-    lines.push(`    ${colorAction(action)}  ${count}  — ${chalk.dim(actionEffect(action))}`);
+    lines.push(padRow(`    ${colorAction(action)}  ${count}  — ${chalk.dim(actionEffect(action))}`, cols));
   }
   if (counts.skip > 0) {
-    lines.push(`    ${colorAction("skip")}  ${counts.skip}  — ${chalk.dim("no change this run")}`);
+    lines.push(padRow(`    ${colorAction("skip")}  ${counts.skip}  — ${chalk.dim("no change this run")}`, cols));
   }
-  lines.push("");
+  lines.push(EOL);
 
   if (blocked) {
-    lines.push("  " + chalk.magenta("⚠ ") +
-      `${counts.conflict} unresolved conflict${counts.conflict === 1 ? "" : "s"}.`);
-    lines.push("  " + chalk.dim("Resolve them (←/→/m/e) or press [d] to defer, then re-apply."));
-    lines.push("");
-    lines.push("  " + chalk.dim("[ESC/n] back to list   [q] quit without applying"));
+    lines.push(padRow("  " + chalk.magenta("⚠ ") +
+      `${counts.conflict} unresolved conflict${counts.conflict === 1 ? "" : "s"}.`, cols));
+    lines.push(padRow("  " + chalk.dim("Resolve them (←/→/m/e) or press [d] to defer, then re-apply."), cols));
+    lines.push(EOL);
+    lines.push(padRow("  " + chalk.dim("[ESC/n] back to list   [q] quit without applying"), cols));
   } else {
-    lines.push("  " + chalk.green("All rows resolved."));
-    lines.push("");
-    lines.push("  " + chalk.bold.green("[ENTER] apply now") + "   " +
-      chalk.bold("[ESC] back to list") + "   " + chalk.dim("[q] quit"));
+    lines.push(padRow("  " + chalk.green("All rows resolved."), cols));
+    lines.push(EOL);
+    lines.push(padRow("  " + chalk.bold.green("[ENTER] apply now") + "   " +
+      chalk.bold("[ESC] back to list") + "   " + chalk.dim("[q] quit"), cols));
   }
   // Pad to viewport
-  while (lines.length < state.viewport.rows) lines.push("");
+  while (lines.length < state.viewport.rows) lines.push(EOL);
   return lines.join("\n");
 }
 
@@ -245,9 +258,10 @@ function renderPreview(state: AppState): string {
 function renderFilterInput(state: AppState): string {
   const cols = state.viewport.cols;
   const lines: string[] = [];
-  // Render the underlying list dimmed
+  // Render the underlying list dimmed. stripAnsi eats the per-line \x1b[K,
+  // so re-pad through padRow to reattach EOL and the width budget.
   const listFrame = renderList({ ...state, view: "list" }).split("\n");
-  for (const l of listFrame) lines.push(chalk.dim(stripAnsi(l)));
+  for (const l of listFrame) lines.push(padRow(chalk.dim(stripAnsi(l)), cols));
   // Overlay an input box near the bottom
   const prompt = "filter> " + state.filterDraft + chalk.inverse(" ");
   // Replace the second-to-last line with the prompt
@@ -262,7 +276,8 @@ function renderFilterInput(state: AppState): string {
 // ────────────────────────────────────────────────────────────
 
 function separator(cols: number): string {
-  return chalk.dim("─".repeat(Math.max(0, cols - 1)));
+  // EOL so this row clears any leftover content from the previous frame.
+  return chalk.dim("─".repeat(Math.max(0, cols - 1))) + EOL;
 }
 
 function centered(s: string, cols: number): string {
@@ -288,7 +303,7 @@ function centered(s: string, cols: number): string {
 function padRow(s: string, cols: number): string {
   const max = Math.max(1, cols - 1);
   const truncated = truncateVisible(s, max);
-  return truncated + "\x1b[K";
+  return truncated + EOL;
 }
 
 // CSI sequences (ESC [ … letter) — covers SGR colors (m), clear-to-EOL (K),
