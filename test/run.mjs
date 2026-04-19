@@ -38,12 +38,44 @@ if (sandboxHome) {
   env.USERPROFILE = sandboxHome;
 }
 
-const cmd = `node --import tsx --test ${files.join(" ")}`;
+// Run each test file in its own top-level Node process. Node's built-in
+// test runner uses V8-serialized IPC to multiplex TAP from many test workers
+// back to a parent collector, and on Windows that pipe occasionally fails
+// with "Unable to deserialize cloned data due to invalid or unsupported
+// version" when several files print concurrently. Sequencing per-file
+// sidesteps the multiplexer entirely; this trades a few seconds of wall time
+// for a deterministic CI signal — worth it.
 let exitCode = 0;
+let totalTests = 0;
+let totalPass = 0;
+let totalFail = 0;
+const failedFiles = [];
 try {
-  execSync(cmd, { stdio: "inherit", env });
-} catch {
-  exitCode = 1;
+  for (const file of files) {
+    const cmd = `node --import tsx --test ${file}`;
+    let stdout = "";
+    let fileFailed = false;
+    try {
+      stdout = execSync(cmd, { env, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
+    } catch (err) {
+      fileFailed = true;
+      stdout = (err.stdout ?? "").toString();
+      failedFiles.push(file);
+    }
+    process.stdout.write(stdout);
+    const tests = parseInt((stdout.match(/^# tests (\d+)/m) ?? [])[1] ?? "0", 10);
+    const pass  = parseInt((stdout.match(/^# pass (\d+)/m)  ?? [])[1] ?? "0", 10);
+    const fail  = parseInt((stdout.match(/^# fail (\d+)/m)  ?? [])[1] ?? "0", 10);
+    totalTests += tests;
+    totalPass += pass;
+    totalFail += fail;
+    if (fileFailed && fail === 0) totalFail += 1;
+  }
+  console.log(`\n# AGGREGATE: tests ${totalTests} | pass ${totalPass} | fail ${totalFail}`);
+  if (failedFiles.length) {
+    console.log(`# Failed files:\n${failedFiles.map((f) => `#   ${f}`).join("\n")}`);
+    exitCode = 1;
+  }
 } finally {
   if (sandboxHome) {
     rmSync(sandboxHome, { recursive: true, force: true });

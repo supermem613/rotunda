@@ -9,6 +9,7 @@ import { isGitRepo, gitPull, gitCommitAndPush } from "../utils/git.js";
 import { copyFile, mkdir, rm, access, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { createInterface } from "node:readline";
+import { hashContent } from "../utils/hash.js";
 import type { FileChange, ReviewResult } from "../core/types.js";
 
 async function confirm(prompt: string): Promise<boolean> {
@@ -141,15 +142,21 @@ export async function pullCommand(options: { yes?: boolean }): Promise<void> {
     if (c.action === "added" || c.action === "modified") {
       await mkdir(dirname(localFile), { recursive: true });
 
-      // Use reshaped content if available, otherwise copy
+      // Use reshaped content if available, otherwise copy.
+      // CRITICAL: state must record the hash of the bytes actually written,
+      // not c.repoHash — they differ when reshape rewrote the content.
+      let writtenHash: string;
       if (reshapedContents.has(reshapeKey)) {
-        await writeFile(localFile, reshapedContents.get(reshapeKey)!, "utf-8");
+        const reshaped = reshapedContents.get(reshapeKey)!;
+        await writeFile(localFile, reshaped, "utf-8");
+        writtenHash = hashContent(reshaped);
       } else {
         await copyFile(repoFile, localFile);
+        writtenHash = c.repoHash!;
       }
 
-      // Update state
-      const synced = new Map([[c.relativePath, c.repoHash!]]);
+      // Update state with the actual content hash
+      const synced = new Map([[c.relativePath, writtenHash]]);
       updatedState = updateStateFiles(updatedState, rootDef.repo, synced);
 
       console.log(chalk.green("  ✓") + ` ${c.rootName}/${c.relativePath}`);

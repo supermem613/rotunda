@@ -9,6 +9,7 @@ import { reviewChanges } from "../llm/review.js";
 import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { createInterface } from "node:readline";
+import { hashContent } from "../utils/hash.js";
 import type { FileChange, ReviewResult } from "../core/types.js";
 
 async function confirm(prompt: string): Promise<boolean> {
@@ -124,16 +125,22 @@ export async function pushCommand(options: { yes?: boolean }): Promise<void> {
     if (c.action === "added" || c.action === "modified") {
       await mkdir(dirname(repoFile), { recursive: true });
 
-      // Use reshaped content if available, otherwise copy the file
+      // Use reshaped content if available, otherwise copy the file.
+      // CRITICAL: state must record the hash of the bytes actually written,
+      // not c.localHash — they differ when reshape rewrote the content.
+      let writtenHash: string;
       if (reshapedContents.has(reshapeKey)) {
-        await writeFile(repoFile, reshapedContents.get(reshapeKey)!, "utf-8");
+        const reshaped = reshapedContents.get(reshapeKey)!;
+        await writeFile(repoFile, reshaped, "utf-8");
+        writtenHash = hashContent(reshaped);
       } else {
         await copyFile(localFile, repoFile);
+        writtenHash = c.localHash!;
       }
       gitPaths.push(join(rootDef.repo, c.relativePath));
 
-      // Update state
-      const synced = new Map([[c.relativePath, c.localHash!]]);
+      // Update state with the actual content hash
+      const synced = new Map([[c.relativePath, writtenHash]]);
       updatedState = updateStateFiles(updatedState, rootDef.repo, synced);
 
       console.log(chalk.green("  ✓") + ` ${c.rootName}/${c.relativePath}`);
@@ -163,7 +170,9 @@ export async function pushCommand(options: { yes?: boolean }): Promise<void> {
       await gitCommitAndPush(cwd, gitPaths, commitMsg, true);
       console.log(chalk.green(`\n  ✓ Committed and pushed: "${commitMsg}"`));
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
       console.log(chalk.yellow("\n  ⚠ Changes applied but git commit failed. Commit manually."));
+      console.log(chalk.dim("    " + msg.split("\n").join("\n    ")));
     }
   }
 

@@ -68,10 +68,25 @@ export interface FileState {
   syncedAt: string; // ISO 8601
 }
 
+/** A file whose conflict resolution has been deferred to a later sync. */
+export interface DeferredEntry {
+  /** Why this row is deferred. 'conflict' = user pressed defer in TUI; 'user' = reserved. */
+  reason: "conflict" | "user";
+  /** ISO 8601 timestamp when the deferral was captured. */
+  capturedAt: string;
+}
+
 /** The full sync state for a machine. */
 export interface SyncState {
   lastSync: string; // ISO 8601
   files: Record<string, FileState>;
+  /**
+   * Map of root-prefixed path → deferral metadata. Sync skips deferred rows
+   * in the apply pass and surfaces them in the TUI as 'deferred (resolve via
+   * .rotunda/conflicts/...)'. Optional for backward compatibility with state
+   * files written by earlier rotunda versions.
+   */
+  deferred?: Record<string, DeferredEntry>;
 }
 
 /** Result of a doctor check. */

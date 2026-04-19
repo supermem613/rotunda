@@ -24,23 +24,19 @@ import { whereCommand } from "./commands/where.js";
 const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
 const VERSION = (JSON.parse(readFileSync(pkgPath, "utf8")) as { version: string }).version;
 
-// Print a one-line version banner before any real work, except when the user
-// is asking for --version/--help (commander handles those itself) or there
-// are no args (commander prints help). Skipping these keeps machine-parseable
-// output (e.g., `rotunda where` piped into a script) clean of decoration.
-const argv = process.argv.slice(2);
-const QUIET_ARGS = new Set(["--version", "-V", "--help", "-h"]);
-const QUIET_COMMANDS = new Set(["where"]);
-if (argv.length > 0 && !QUIET_ARGS.has(argv[0]) && !QUIET_COMMANDS.has(argv[0])) {
-  process.stderr.write(`rotunda v${VERSION}\n`);
-}
-
 const program = new Command();
 
 program
   .name("rotunda")
-  .description("Bidirectional config sync with LLM-assisted review")
-  .version(VERSION);
+  .description("Bidirectional config sync with LLM-assisted review");
+
+// Bare `rotunda` (no args) prints version + help. No version banner is printed
+// before sub-commands so machine-parseable output stays clean.
+if (process.argv.slice(2).length === 0) {
+  process.stdout.write(`rotunda v${VERSION}\n\n`);
+  program.outputHelp();
+  process.exit(0);
+}
 
 // Commands are registered in alphabetical order so `rotunda --help` lists
 // them alphabetically (commander preserves registration order in help).

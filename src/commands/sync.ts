@@ -1,212 +1,88 @@
 import chalk from "chalk";
 import { loadRepoContext } from "../core/repo-context.js";
-import { loadState, saveState, updateStateFiles, removeFromState } from "../core/state.js";
+import { loadState, saveState } from "../core/state.js";
 import { computeAllChanges } from "../core/engine.js";
 import { withLock } from "../utils/lock.js";
 import { isGitRepo, gitPull, gitCommitAndPush } from "../utils/git.js";
-import { copyFile, mkdir, rm, access } from "node:fs/promises";
-import { join, dirname } from "node:path";
-import { createInterface } from "node:readline";
-import type { FileChange } from "../core/types.js";
-
-async function confirm(prompt: string): Promise<boolean> {
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((resolve) => {
-    rl.question(prompt, (answer) => {
-      rl.close();
-      resolve(answer.toLowerCase().startsWith("y"));
-    });
-  });
-}
-
-async function promptChoice(question: string, choices: string[]): Promise<string> {
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((resolve) => {
-    rl.question(question, (answer) => {
-      rl.close();
-      const lower = answer.toLowerCase().trim();
-      resolve(choices.includes(lower) ? lower : choices[0]);
-    });
-  });
-}
-
-async function fileExists(path: string): Promise<boolean> {
-  try { await access(path); return true; } catch { return false; }
-}
+import { runTui } from "../tui/screen.js";
+import { initialState, type Row } from "../tui/state.js";
+import { planApply, executeApply } from "../sync/apply.js";
 
 export async function syncCommand(options: { yes?: boolean }): Promise<void> {
   const { cwd, manifest } = loadRepoContext();
 
   await withLock(cwd, "sync", async () => {
-  // Pull latest from remote before computing changes
-  if (await isGitRepo(cwd)) {
-    try {
-      const pulled = await gitPull(cwd);
-      if (pulled) {
-        console.log(chalk.dim("  ↓ Pulled latest from remote."));
+    if (await isGitRepo(cwd)) {
+      try {
+        const pulled = await gitPull(cwd);
+        if (pulled) console.log(chalk.dim("  ↓ Pulled latest from remote."));
+      } catch {
+        console.log(chalk.yellow("  ⚠ git pull failed — continuing with local state."));
       }
-    } catch {
-      console.log(chalk.yellow("  ⚠ git pull failed — continuing with local state."));
     }
-  }
 
-  const state = await loadState(cwd);
-  const allChanges = await computeAllChanges(manifest, cwd, state);
+    const state = await loadState(cwd);
+    const allChanges = await computeAllChanges(manifest, cwd, state);
 
-  if (allChanges.length === 0) {
-    console.log(chalk.green("✓") + " Everything in sync. No changes detected.");
-    return;
-  }
-
-  // Categorize changes
-  const localChanges = allChanges.filter((c) => c.side === "local");
-  const repoChanges = allChanges.filter((c) => c.side === "repo");
-  const conflicts = allChanges.filter((c) => c.action === "conflict");
-
-  // Show summary
-  console.log(chalk.bold("\n  Sync Summary:\n"));
-  if (localChanges.length > 0) {
-    console.log(chalk.cyan(`  → Push (local → repo): ${localChanges.length} file(s)`));
-    for (const c of localChanges) {
-      const label = c.action === "added" ? chalk.green("added") :
-        c.action === "modified" ? chalk.yellow("modified") : chalk.red("deleted");
-      console.log(`      ${label}  ${c.rootName}/${c.relativePath}`);
-    }
-  }
-  if (repoChanges.length > 0) {
-    console.log(chalk.cyan(`\n  ← Pull (repo → local): ${repoChanges.length} file(s)`));
-    for (const c of repoChanges) {
-      const label = c.action === "added" ? chalk.green("added") :
-        c.action === "modified" ? chalk.yellow("modified") : chalk.red("deleted");
-      console.log(`      ${label}  ${c.rootName}/${c.relativePath}`);
-    }
-  }
-  if (conflicts.length > 0) {
-    console.log(chalk.magenta(`\n  ⚠ Conflicts: ${conflicts.length} file(s)`));
-    for (const c of conflicts) {
-      console.log(`      ${chalk.magenta("CONFLICT")}  ${c.rootName}/${c.relativePath}`);
-    }
-  }
-
-  console.log();
-
-  // Confirm non-conflicts
-  const autoApply = [...localChanges, ...repoChanges];
-  if (!options.yes && autoApply.length > 0) {
-    const ok = await confirm(`  Apply ${autoApply.length} non-conflicting change(s)? [y/N] `);
-    if (!ok) {
-      console.log(chalk.dim("  Cancelled."));
+    if (allChanges.length === 0) {
+      console.log(chalk.green("✓") + " Everything in sync. No changes detected.");
       return;
     }
-  }
 
-  // Apply non-conflicting changes
-  let updatedState = { ...state, files: { ...state.files } };
-  const gitPaths: string[] = [];
+    // Interactive TUI when stdout is a TTY and the user hasn't asked for non-interactive.
+    const interactive = !options.yes && Boolean(process.stdout.isTTY) && Boolean(process.stdin.isTTY);
 
-  for (const c of autoApply) {
-    const rootDef = manifest.roots.find((r) => r.repo === c.rootName);
-    if (!rootDef) continue;
-
-    const localFile = join(rootDef.local, c.relativePath);
-    const repoFile = join(cwd, rootDef.repo, c.relativePath);
-
-    if (c.side === "local") {
-      // Push: local → repo
-      if (c.action === "added" || c.action === "modified") {
-        await mkdir(dirname(repoFile), { recursive: true });
-        await copyFile(localFile, repoFile);
-        gitPaths.push(join(rootDef.repo, c.relativePath));
-        const synced = new Map([[c.relativePath, c.localHash!]]);
-        updatedState = updateStateFiles(updatedState, rootDef.repo, synced);
-        console.log(chalk.green("  → ✓") + ` ${c.rootName}/${c.relativePath}`);
-      } else if (c.action === "deleted") {
-        await rm(repoFile, { recursive: true, force: true }).catch(() => {});
-        gitPaths.push(join(rootDef.repo, c.relativePath));
-        updatedState = removeFromState(updatedState, rootDef.repo, [c.relativePath]);
-        console.log(chalk.red("  → ✗") + ` ${c.rootName}/${c.relativePath} ${chalk.dim("(removed from repo)")}`);
+    let rowsToApply: Row[];
+    if (interactive) {
+      const result = await runTui({
+        changes: allChanges,
+        manifest,
+        cwd,
+        state,
+      });
+      if (result.quit || !result.applied) {
+        console.log(chalk.dim("  Cancelled — no changes applied."));
+        return;
       }
-    } else if (c.side === "repo") {
-      // Pull: repo → local
-      if (c.action === "added" || c.action === "modified") {
-        await mkdir(dirname(localFile), { recursive: true });
-        await copyFile(repoFile, localFile);
-        const synced = new Map([[c.relativePath, c.repoHash!]]);
-        updatedState = updateStateFiles(updatedState, rootDef.repo, synced);
-        console.log(chalk.green("  ← ✓") + ` ${c.rootName}/${c.relativePath}`);
-      } else if (c.action === "deleted") {
-        if (await fileExists(localFile)) {
-          await rm(localFile, { recursive: true, force: true });
+      rowsToApply = result.state.rows;
+    } else {
+      // Headless: build engine-default rows and refuse to apply when conflicts exist.
+      const initial = initialState(allChanges, { cols: 80, rows: 24 }, state.deferred);
+      const conflicts = initial.rows.filter((r) => r.action === "conflict");
+      if (conflicts.length > 0) {
+        console.log(chalk.magenta(`  ⚠ ${conflicts.length} unresolved conflict(s):`));
+        for (const r of conflicts) {
+          console.log(`      ${chalk.magenta("CONFLICT")}  ${r.change.rootName}/${r.change.relativePath}`);
         }
-        updatedState = removeFromState(updatedState, rootDef.repo, [c.relativePath]);
-        console.log(chalk.red("  ← ✗") + ` ${c.rootName}/${c.relativePath} ${chalk.dim("(removed from local)")}`);
+        console.log(chalk.dim("  Re-run `rotunda sync` in an interactive terminal to resolve them."));
+        process.exit(1);
       }
+      rowsToApply = initial.rows;
     }
-  }
 
-  // Handle conflicts interactively
-  if (conflicts.length > 0 && !options.yes) {
-    console.log(chalk.magenta("\n  Resolving conflicts:\n"));
+    const plan = planApply(rowsToApply);
+    if (plan.ops.length === 0) {
+      console.log(chalk.dim("  Nothing to apply."));
+      return;
+    }
 
-    for (const c of conflicts) {
-      const rootDef = manifest.roots.find((r) => r.repo === c.rootName);
-      if (!rootDef) continue;
+    const exec = await executeApply(plan, manifest, cwd, state);
+    for (const line of exec.log) console.log("  " + line);
 
-      const localFile = join(rootDef.local, c.relativePath);
-      const repoFile = join(cwd, rootDef.repo, c.relativePath);
+    await saveState(cwd, exec.state);
 
-      console.log(chalk.magenta(`  CONFLICT: ${c.rootName}/${c.relativePath}`));
-      const choice = await promptChoice(
-        `    Keep [l]ocal, keep [r]epo, or [s]kip? `,
-        ["l", "r", "s"]
-      );
-
-      if (choice === "l") {
-        // Keep local → push to repo
-        if (await fileExists(localFile)) {
-          await mkdir(dirname(repoFile), { recursive: true });
-          await copyFile(localFile, repoFile);
-          gitPaths.push(join(rootDef.repo, c.relativePath));
-          const synced = new Map([[c.relativePath, c.localHash!]]);
-          updatedState = updateStateFiles(updatedState, rootDef.repo, synced);
-        } else {
-          await rm(repoFile, { recursive: true, force: true }).catch(() => {});
-          gitPaths.push(join(rootDef.repo, c.relativePath));
-          updatedState = removeFromState(updatedState, rootDef.repo, [c.relativePath]);
-        }
-        console.log(chalk.green("    ✓") + " Kept local version");
-      } else if (choice === "r") {
-        // Keep repo → pull to local
-        if (await fileExists(repoFile)) {
-          await mkdir(dirname(localFile), { recursive: true });
-          await copyFile(repoFile, localFile);
-          const synced = new Map([[c.relativePath, c.repoHash!]]);
-          updatedState = updateStateFiles(updatedState, rootDef.repo, synced);
-        } else {
-          await rm(localFile, { recursive: true, force: true }).catch(() => {});
-          updatedState = removeFromState(updatedState, rootDef.repo, [c.relativePath]);
-        }
-        console.log(chalk.green("    ✓") + " Kept repo version");
-      } else {
-        console.log(chalk.dim("    Skipped"));
+    if (exec.gitPaths.length > 0 && (await isGitRepo(cwd))) {
+      const commitMsg = `rotunda sync — ${exec.gitPaths.length} file(s)`;
+      try {
+        await gitCommitAndPush(cwd, exec.gitPaths, commitMsg, true);
+        console.log(chalk.green(`  ✓ Committed and pushed: "${commitMsg}"`));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.log(chalk.yellow("  ⚠ Changes applied but git commit/push failed. Commit manually."));
+        console.log(chalk.dim("    " + msg.split("\n").join("\n    ")));
       }
     }
-  }
 
-  // Save state
-  await saveState(cwd, updatedState);
-
-  // Git commit and push (only if any repo-side files actually changed)
-  if (gitPaths.length > 0 && (await isGitRepo(cwd))) {
-    const commitMsg = `rotunda sync — ${gitPaths.length} file(s)`;
-    try {
-      await gitCommitAndPush(cwd, gitPaths, commitMsg, true);
-      console.log(chalk.green(`  ✓ Committed and pushed: "${commitMsg}"`));
-    } catch {
-      console.log(chalk.yellow("\n  ⚠ Changes applied but git commit/push failed. Commit manually."));
-    }
-  }
-
-  console.log(chalk.green(`  ✓ Sync complete.`));
-  }); // end withLock
+    console.log(chalk.green("  ✓ Sync complete."));
+  });
 }

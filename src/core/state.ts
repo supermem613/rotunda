@@ -1,6 +1,6 @@
 import { readFile, writeFile, mkdir, rename, access } from "node:fs/promises";
 import { join, dirname } from "node:path";
-import type { SyncState, FileState } from "./types.js";
+import type { SyncState, FileState, DeferredEntry } from "./types.js";
 
 const STATE_DIR = ".rotunda";
 const STATE_FILE = "state.json";
@@ -26,6 +26,7 @@ export function emptyState(): SyncState {
   return {
     lastSync: new Date().toISOString(),
     files: {},
+    deferred: {},
   };
 }
 
@@ -50,6 +51,12 @@ export async function loadState(repoPath: string): Promise<SyncState> {
     if (!parsed.lastSync || typeof parsed.files !== "object") {
       console.warn("Warning: state file has invalid structure, starting fresh.");
       return emptyState();
+    }
+
+    // Backfill optional fields added in newer schema versions so the rest of
+    // the codebase can treat them as required.
+    if (!parsed.deferred || typeof parsed.deferred !== "object") {
+      parsed.deferred = {};
     }
 
     return parsed;
@@ -117,13 +124,55 @@ export function removeFromState(
   rootRepo: string,
   deletedPaths: string[]
 ): SyncState {
-  const updated = { ...state, files: { ...state.files } };
+  const updated = {
+    ...state,
+    files: { ...state.files },
+    deferred: { ...(state.deferred ?? {}) },
+  };
 
   for (const relPath of deletedPaths) {
     const stateKey = rootRepo + "/" + relPath;
     delete updated.files[stateKey];
+    // A deleted file can no longer be deferred-as-conflict; clear the marker
+    // so a future sync doesn't surface a phantom row.
+    delete updated.deferred[stateKey];
   }
 
   updated.lastSync = new Date().toISOString();
+  return updated;
+}
+
+/**
+ * Mark a root-prefixed path as deferred. Idempotent.
+ * Used by the conflict toolbox 'defer' action — the file's snapshots are
+ * written to .rotunda/conflicts/<root>/<path>/ separately.
+ */
+export function setDeferred(
+  state: SyncState,
+  stateKey: string,
+  reason: DeferredEntry["reason"] = "conflict"
+): SyncState {
+  const updated = {
+    ...state,
+    deferred: { ...(state.deferred ?? {}) },
+  };
+  updated.deferred[stateKey] = {
+    reason,
+    capturedAt: new Date().toISOString(),
+  };
+  return updated;
+}
+
+/**
+ * Clear a deferral marker. Used when the user resolves a deferred row
+ * (e.g. by editing the working file and re-running sync, then picking a side).
+ */
+export function clearDeferred(state: SyncState, stateKey: string): SyncState {
+  if (!state.deferred?.[stateKey]) return state;
+  const updated = {
+    ...state,
+    deferred: { ...state.deferred },
+  };
+  delete updated.deferred[stateKey];
   return updated;
 }
