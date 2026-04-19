@@ -49,10 +49,21 @@ export async function pullCommand(options: { yes?: boolean }): Promise<void> {
   const state = await loadState(cwd);
   const allChanges = await computeAllChanges(manifest, cwd, state);
 
-  // Filter to repo-side changes (things that should be pulled to local)
-  const pullable = allChanges.filter(
-    (c) => c.side === "repo" || (c.side === "both" && c.action !== "conflict")
-  );
+  // Filter to repo-side changes (things that should be pulled to local).
+  // A locally-deleted file whose repo copy is unchanged is also pullable:
+  // pull (repo → local) restores the missing file from the repo.
+  const pullable = allChanges
+    .filter(
+      (c) =>
+        c.side === "repo" ||
+        (c.side === "both" && c.action !== "conflict") ||
+        (c.side === "local" && c.action === "deleted" && c.repoHash !== undefined),
+    )
+    .map((c) =>
+      c.side === "local" && c.action === "deleted" && c.repoHash !== undefined
+        ? { ...c, action: "modified" as const, side: "repo" as const }
+        : c,
+    );
 
   if (pullable.length === 0) {
     console.log(chalk.green("✓") + " Nothing to pull. Local is up to date.");
