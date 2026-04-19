@@ -1,7 +1,7 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import {
@@ -72,6 +72,26 @@ describe("isGitRepo", () => {
     mkdirSync(inner, { recursive: true });
     assert.equal(await isGitRepo(inner), false);
   });
+
+  // These guard against the historic "passes locally, fails on the GitHub
+  // Windows runner" bug where isGitRepo did a raw string compare against
+  // `git rev-parse --show-toplevel`. Locally tmpdir() is already the long
+  // form; on the runner it returns the 8.3 short path (RUNNER~1\...), so a
+  // naive compare fails. These cases reproduce that mismatch on any host.
+
+  it("returns true when dir has a trailing separator", async () => {
+    const dir = join(TMP, "trailing-sep-repo");
+    initGitRepo(dir);
+    assert.equal(await isGitRepo(dir + sep), true);
+  });
+
+  if (process.platform === "win32") {
+    it("returns true on Windows when dir casing differs from the real path", async () => {
+      const dir = join(TMP, "cased-repo");
+      initGitRepo(dir);
+      assert.equal(await isGitRepo(dir.toUpperCase()), true);
+    });
+  }
 });
 
 // --- gitPull ---

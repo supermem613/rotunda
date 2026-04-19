@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -38,12 +39,26 @@ export async function git(
 export async function isGitRepo(dir: string): Promise<boolean> {
   try {
     const { stdout } = await git(["rev-parse", "--show-toplevel"], dir);
-    const toplevel = stdout.trim().replace(/\\/g, "/");
-    const normalised = dir.replace(/\\/g, "/");
-    return toplevel === normalised;
+    return normalizePath(stdout.trim()) === normalizePath(dir);
   } catch {
     return false;
   }
+}
+
+/**
+ * Normalise a filesystem path for equality comparison: resolve symlinks and
+ * Windows 8.3 short names via realpath, unify separators, strip trailing
+ * separators, and lowercase on case-insensitive filesystems (Windows).
+ */
+function normalizePath(p: string): string {
+  let resolved = p;
+  try {
+    resolved = realpathSync.native(p);
+  } catch {
+    // Path may not exist or be inaccessible; fall back to the input.
+  }
+  resolved = resolved.replace(/\\/g, "/").replace(/\/+$/, "");
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
 }
 
 /**
