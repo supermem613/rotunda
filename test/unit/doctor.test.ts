@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { checkRotundaIgnored } from "../../src/commands/doctor.js";
 
-const TMP = join(import.meta.dirname, "__doctor_tmp__");
+const TMP = join(tmpdir(), "rotunda-doctor-test");
 
 function initGitRepo(dir: string): void {
   mkdirSync(dir, { recursive: true });

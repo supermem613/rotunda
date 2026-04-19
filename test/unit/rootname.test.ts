@@ -4,12 +4,13 @@ import {
   mkdirSync, writeFileSync, rmSync,
 } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { loadManifest } from "../../src/core/manifest.js";
 import { emptyState, updateStateFiles } from "../../src/core/state.js";
 import { computeAllChanges, computeChanges, discoverFiles, hashFiles } from "../../src/core/engine.js";
 import type { Manifest } from "../../src/core/types.js";
 
-const TMP = join(import.meta.dirname, "__rootname_tmp__");
+const TMP = join(tmpdir(), "rotunda-rootname-test");
 const REPO = join(TMP, "repo");
 const LOCAL = join(TMP, "local");
 

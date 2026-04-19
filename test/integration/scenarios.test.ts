@@ -2,13 +2,14 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { loadManifest } from "../../src/core/manifest.js";
 import { loadState, saveState, emptyState, updateStateFiles, removeFromState } from "../../src/core/state.js";
 import { computeAllChanges, discoverFiles, hashFiles } from "../../src/core/engine.js";
 import type { SyncState, FileChange } from "../../src/core/types.js";
 
 // ── Temp directory layout ────────────────────────────────────────────
-const TMP = join(import.meta.dirname, "__scenarios_tmp__");
+const TMP = join(tmpdir(), "rotunda-scenarios-test");
 const REPO = join(TMP, "repo");
 const LOCAL = join(TMP, "local");
 const REPO_ROOT = join(REPO, "config");

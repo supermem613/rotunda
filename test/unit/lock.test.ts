@@ -2,10 +2,11 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, rmSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { acquireLock, releaseLock, withLock } from "../../src/utils/lock.js";
 import { writeFile } from "node:fs/promises";
 
-const TMP = join(import.meta.dirname, "__lock_tmp__");
+const TMP = join(tmpdir(), "rotunda-lock-test");
 
 function cleanup(): void {
   rmSync(TMP, { recursive: true, force: true });

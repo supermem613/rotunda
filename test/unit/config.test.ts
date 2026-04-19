@@ -2,7 +2,7 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import {
   loadGlobalConfig,
   saveGlobalConfig,
@@ -14,7 +14,7 @@ import {
 } from "../../src/core/config.js";
 import { RotundaError } from "../../src/core/manifest.js";
 
-const TMP_DIR = join(import.meta.dirname, "__config_test_tmp__");
+const TMP_DIR = join(tmpdir(), "rotunda-config-test");
 const CONFIG_PATH = join(TMP_DIR, ".rotunda.json");
 const REPO_DIR = join(TMP_DIR, "dotfiles");
 

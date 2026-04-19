@@ -2,11 +2,11 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { writeFileSync, mkdirSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { saveGlobalConfig, loadGlobalConfig } from "../../src/core/config.js";
 import { whereCommand } from "../../src/commands/where.js";
 
-const TMP_DIR = join(import.meta.dirname, "__bind_test_tmp__");
+const TMP_DIR = join(tmpdir(), "rotunda-bind-test");
 
 /**
  * The bind/where commands read ~/.rotunda.json directly via getGlobalConfigPath().

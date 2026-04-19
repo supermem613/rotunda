@@ -2,10 +2,10 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join, sep } from "node:path";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { loadManifest, ManifestSchema, RotundaError } from "../../src/core/manifest.js";
 
-const TMP_DIR = join(import.meta.dirname, "__manifest_test_tmp__");
+const TMP_DIR = join(tmpdir(), "rotunda-manifest-test");
 
 function writeManifest(dir: string, obj: unknown): void {
   writeFileSync(join(dir, "rotunda.json"), JSON.stringify(obj));

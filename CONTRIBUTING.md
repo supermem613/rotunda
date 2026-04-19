@@ -75,6 +75,27 @@ test/
 
 Unit tests should be fast and not touch the filesystem. Integration tests create temporary directories and test real file operations. The auto-pull integration tests run the CLI as a subprocess against real git repos.
 
+### Tenet: tests must never touch the rotunda repo
+
+**Tests must not create, modify, or delete any files inside the rotunda repository itself**, even temporarily and even if it would "in theory" be safe. Always work in a directory under `os.tmpdir()`.
+
+Why: a test that pollutes the working tree can corrupt git state, defeat `.gitignore`, race with other tests, or — if the CLI is spawned with `cwd` inside the repo — accidentally rebind the developer's real `~/.rotunda.json`. Using `os.tmpdir()` makes tests hermetic regardless of where they run from.
+
+Concretely:
+
+```typescript
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+// ✓ Correct
+const TMP = join(tmpdir(), "rotunda-myfeature-test");
+
+// ✗ Wrong — writes inside the repo
+const TMP = join(import.meta.dirname, "__myfeature_tmp__");
+```
+
+When a test must spawn the rotunda CLI as a subprocess, also point `HOME`/`USERPROFILE` at an isolated temp directory so the test's `~/.rotunda.json` binding can't clobber the developer's real binding. See `test/integration/auto-pull.test.ts` for the pattern.
+
 ### Writing Tests
 
 ```typescript

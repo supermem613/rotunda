@@ -8,16 +8,18 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import {
-  mkdirSync, writeFileSync, readFileSync, rmSync, existsSync,
+  mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, mkdtempSync,
 } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { execFileSync, execSync } from "node:child_process";
 
-const TMP = join(import.meta.dirname, "__autopull_tmp__");
-const BARE = join(TMP, "bare");        // bare "remote"
-const CLONE_A = join(TMP, "clone-a");  // simulates another machine pushing
-const DOTFILES = join(TMP, "dotfiles"); // the repo where rotunda commands run
-const LOCAL = join(TMP, "local");       // local target for sync roots
+let TMP: string;
+let BARE: string;
+let CLONE_A: string;
+let DOTFILES: string;
+let LOCAL: string;
+let FAKE_HOME: string;
 
 // Path to the CLI entry point
 const CLI_ENTRY = join(import.meta.dirname, "..", "..", "src", "cli.ts");
@@ -33,15 +35,32 @@ function cloneAndConfigure(dest: string): void {
   execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: dest });
 }
 
+function writeBinding(repoPath: string): void {
+  mkdirSync(FAKE_HOME, { recursive: true });
+  writeFileSync(
+    join(FAKE_HOME, ".rotunda.json"),
+    JSON.stringify({ version: 1, dotfilesRepo: repoPath, cdShell: null }, null, 2),
+  );
+}
+
 function runCli(command: string, cwd: string): string {
+  // Bind rotunda to `cwd` for this invocation by writing an isolated ~/.rotunda.json.
+  // We deliberately spawn `node` from the rotunda repo (not `cwd`) so module resolution
+  // can find `tsx`; rotunda itself reads the bound repo path from ~/.rotunda.json, not cwd.
+  writeBinding(cwd);
+  const repoRoot = join(import.meta.dirname, "..", "..");
   try {
     return execSync(
       `node --import tsx "${CLI_ENTRY}" ${command}`,
-      { cwd, encoding: "utf-8", timeout: 30_000 },
+      {
+        cwd: repoRoot,
+        encoding: "utf-8",
+        timeout: 30_000,
+        env: { ...process.env, HOME: FAKE_HOME, USERPROFILE: FAKE_HOME },
+      },
     );
   } catch (err: unknown) {
     const e = err as Error & { stdout?: string; stderr?: string };
-    // Return combined output even on non-zero exit (e.g., "nothing to push")
     return (e.stdout ?? "") + (e.stderr ?? "");
   }
 }
@@ -76,12 +95,22 @@ function setupRotundaRepo(): void {
 }
 
 function cleanup(): void {
-  rmSync(TMP, { recursive: true, force: true });
+  if (TMP) rmSync(TMP, { recursive: true, force: true });
+}
+
+function freshTmp(): void {
+  cleanup();
+  TMP = mkdtempSync(join(tmpdir(), "rotunda-autopull-"));
+  BARE = join(TMP, "bare");
+  CLONE_A = join(TMP, "clone-a");
+  DOTFILES = join(TMP, "dotfiles");
+  LOCAL = join(TMP, "local");
+  FAKE_HOME = join(TMP, "home");
 }
 
 describe("Auto git-pull: sync command", () => {
   beforeEach(() => {
-    cleanup();
+    freshTmp();
     initBare();
     cloneAndConfigure(DOTFILES);
     cloneAndConfigure(CLONE_A);
@@ -125,7 +154,7 @@ describe("Auto git-pull: sync command", () => {
 
 describe("Auto git-pull: pull command", () => {
   beforeEach(() => {
-    cleanup();
+    freshTmp();
     initBare();
     cloneAndConfigure(DOTFILES);
     cloneAndConfigure(CLONE_A);
@@ -167,7 +196,7 @@ describe("Auto git-pull: pull command", () => {
 
 describe("Auto git-pull: push command", () => {
   beforeEach(() => {
-    cleanup();
+    freshTmp();
     initBare();
     cloneAndConfigure(DOTFILES);
     cloneAndConfigure(CLONE_A);
@@ -206,7 +235,7 @@ describe("Auto git-pull: push command", () => {
 
 describe("Auto git-pull: failure handling", () => {
   beforeEach(() => {
-    cleanup();
+    freshTmp();
     mkdirSync(join(TMP, "no-remote"), { recursive: true });
     const dir = join(TMP, "no-remote");
     execFileSync("git", ["init"], { cwd: dir });
@@ -250,7 +279,7 @@ describe("Auto git-pull: failure handling", () => {
 
 describe("Auto git-pull: non-git directory", () => {
   beforeEach(() => {
-    cleanup();
+    freshTmp();
     const dir = join(TMP, "non-git");
     mkdirSync(join(dir, ".rotunda"), { recursive: true });
     mkdirSync(join(dir, "config"), { recursive: true });
@@ -289,7 +318,7 @@ function getRemoteLog(bare: string): string {
 
 describe("Git commit+push: sync command", () => {
   beforeEach(() => {
-    cleanup();
+    freshTmp();
     initBare();
     cloneAndConfigure(DOTFILES);
     cloneAndConfigure(CLONE_A);
@@ -352,7 +381,7 @@ describe("Git commit+push: sync command", () => {
 
 describe("Git commit+push: pull command", () => {
   beforeEach(() => {
-    cleanup();
+    freshTmp();
     initBare();
     cloneAndConfigure(DOTFILES);
     cloneAndConfigure(CLONE_A);
@@ -392,7 +421,7 @@ describe("Git commit+push: pull command", () => {
 
 describe("Git commit+push: push command", () => {
   beforeEach(() => {
-    cleanup();
+    freshTmp();
     initBare();
     cloneAndConfigure(DOTFILES);
     cloneAndConfigure(CLONE_A);

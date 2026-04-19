@@ -2,6 +2,7 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
   saveGlobalConfig,
   loadGlobalConfig,
@@ -16,7 +17,7 @@ import { initCommand } from "../../src/commands/init.js";
  *     warns and tells the user to run `rotunda bind` here to switch.
  */
 
-const TMP_DIR = join(import.meta.dirname, "__init_bind_test_tmp__");
+const TMP_DIR = join(tmpdir(), "rotunda-init-bind-test");
 
 const ORIG_HOME = process.env.HOME;
 const ORIG_USERPROFILE = process.env.USERPROFILE;

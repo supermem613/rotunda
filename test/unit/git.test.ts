@@ -14,7 +14,7 @@ import {
   isPathIgnored,
 } from "../../src/utils/git.js";
 
-const TMP = join(import.meta.dirname, "__git_tmp__");
+const TMP = join(tmpdir(), "rotunda-git-test");
 
 function initGitRepo(dir: string): void {
   mkdirSync(dir, { recursive: true });

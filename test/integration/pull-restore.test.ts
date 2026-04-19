@@ -2,12 +2,13 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { loadManifest } from "../../src/core/manifest.js";
 import { emptyState, updateStateFiles, saveState } from "../../src/core/state.js";
 import { computeAllChanges, discoverFiles, hashFiles } from "../../src/core/engine.js";
 import { pullCommand } from "../../src/commands/pull.js";
 
-const TMP = join(import.meta.dirname, "__pull_restore_tmp__");
+const TMP = join(tmpdir(), "rotunda-pull-restore-test");
 const REPO = join(TMP, "repo");
 const LOCAL = join(TMP, "local");
 const FAKE_HOME = join(TMP, "home");
