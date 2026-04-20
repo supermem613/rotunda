@@ -38,13 +38,17 @@ if (sandboxHome) {
   env.USERPROFILE = sandboxHome;
 }
 
-// Run each test file in its own top-level Node process. Node's built-in
-// test runner uses V8-serialized IPC to multiplex TAP from many test workers
-// back to a parent collector, and on Windows that pipe occasionally fails
-// with "Unable to deserialize cloned data due to invalid or unsupported
-// version" when several files print concurrently. Sequencing per-file
-// sidesteps the multiplexer entirely; this trades a few seconds of wall time
-// for a deterministic CI signal — worth it.
+// Run each test file in its own top-level Node process, and — critically —
+// invoke node:test in-process via auto-start (no `--test` flag) with an
+// explicit TAP reporter. The `--test` flag spawns a worker subprocess for the
+// file and multiplexes test events back to the parent over a V8-serialized
+// pipe; on the GitHub Windows runner that pipe intermittently fails with
+// "Unable to deserialize cloned data due to invalid or unsupported version"
+// as an uncaughtException inside node:internal/test_runner/runner. Dropping
+// `--test` and relying on node:test's auto-start (triggered by the file's
+// `import { describe, it } from "node:test"`) keeps the entire run in one
+// process, so there is no IPC channel to corrupt. `--test-reporter=tap`
+// preserves the TAP output this runner parses for the aggregate summary.
 let exitCode = 0;
 let totalTests = 0;
 let totalPass = 0;
@@ -52,7 +56,7 @@ let totalFail = 0;
 const failedFiles = [];
 try {
   for (const file of files) {
-    const cmd = `node --import tsx --test ${file}`;
+    const cmd = `node --import tsx --test-reporter=tap ${file}`;
     let stdout = "";
     let fileFailed = false;
     try {
