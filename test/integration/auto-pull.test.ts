@@ -457,6 +457,17 @@ describe("Git commit+push: push command", () => {
 });
 
 describe("CLI registers update command", () => {
+  it("bare rotunda shows version and full help", () => {
+    const repoRoot = join(import.meta.dirname, "..", "..");
+    const output = runCli("", repoRoot);
+    assert.ok(output.includes("rotunda v"), `bare command should show version: ${output}`);
+    assert.ok(output.includes("Commands:"), `bare command should show commands: ${output}`);
+    assert.ok(
+      output.includes("Usage: rotunda [options] [command]"),
+      `bare command should show full usage: ${output}`,
+    );
+  });
+
   it("rotunda update appears in --help output", () => {
     // Run from the repo root so we don't need a rotunda.json
     const repoRoot = join(import.meta.dirname, "..", "..");

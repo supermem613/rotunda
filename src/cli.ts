@@ -29,14 +29,6 @@ program
   .name("rotunda")
   .description("Bidirectional config sync with LLM-assisted review");
 
-// Bare `rotunda` (no args) prints version + help. No version banner is printed
-// before sub-commands so machine-parseable output stays clean.
-if (process.argv.slice(2).length === 0) {
-  process.stdout.write(`rotunda v${VERSION}\n\n`);
-  program.outputHelp();
-  process.exit(0);
-}
-
 // Commands are registered in alphabetical order so `rotunda --help` lists
 // them alphabetically (commander preserves registration order in help).
 program
@@ -123,5 +115,14 @@ program
   .command("where")
   .description("Print the path of the bound dotfiles repo")
   .action(whereCommand);
+
+// Bare `rotunda` (no args) prints version + full help after commands are
+// registered. No version banner is printed before sub-commands so
+// machine-parseable output stays clean.
+if (process.argv.slice(2).length === 0) {
+  process.stdout.write(`rotunda v${VERSION}\n\n`);
+  program.outputHelp();
+  process.exit(0);
+}
 
 program.parse();
