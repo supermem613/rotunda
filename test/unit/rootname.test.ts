@@ -123,6 +123,41 @@ describe("rootName uses repo path for display and lookup", () => {
   });
 });
 
+describe("discoverFiles include seeding", () => {
+  beforeEach(setup);
+  afterEach(cleanup);
+
+  it("finds an exact root-level include without depending on a full tree walk", async () => {
+    writeFileSync(join(LOCAL, ".claude", "settings.json"), "{}");
+    mkdirSync(join(LOCAL, ".claude", "nested"), { recursive: true });
+    writeFileSync(join(LOCAL, ".claude", "nested", "settings.json"), "{\"nested\":true}");
+
+    const files = await discoverFiles(
+      join(LOCAL, ".claude"),
+      ["settings.json"],
+      [],
+      [],
+    );
+
+    assert.deepEqual([...files.keys()], ["settings.json"]);
+  });
+
+  it("walks from the static include prefix instead of requiring the whole root", async () => {
+    writeFileSync(join(LOCAL, ".claude", "CLAUDE.md"), "# Claude");
+    mkdirSync(join(LOCAL, ".claude", "skills", "commit"), { recursive: true });
+    writeFileSync(join(LOCAL, ".claude", "skills", "commit", "SKILL.md"), "# Skill");
+
+    const files = await discoverFiles(
+      join(LOCAL, ".claude"),
+      ["skills/**"],
+      [],
+      [],
+    );
+
+    assert.deepEqual([...files.keys()], ["skills/commit/SKILL.md"]);
+  });
+});
+
 describe("rootName works with dot-prefixed repo paths", () => {
   beforeEach(setup);
   afterEach(cleanup);

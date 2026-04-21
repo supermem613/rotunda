@@ -1,8 +1,8 @@
 /**
- * Manifest loader — reads and validates rotunda.json.
+ * Manifest loader — reads, validates, and writes rotunda.json.
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import { join, normalize, sep } from "node:path";
 import { z } from "zod";
@@ -44,6 +44,8 @@ export const ManifestSchema = z.object({
   machineOverrides: z.record(z.string(), MachineOverrideSchema).optional(),
 });
 
+export type ManifestDocument = z.infer<typeof ManifestSchema>;
+
 // ── Path helpers ─────────────────────────────────────────────────────
 function resolveTilde(p: string): string {
   if (p === "~") return homedir();
@@ -67,12 +69,16 @@ function resolveRoot(raw: z.infer<typeof SyncRootSchema>): SyncRoot {
 
 // ── Public API ───────────────────────────────────────────────────────
 
-/**
- * Load and validate rotunda.json, applying machine-specific overrides.
- * @param repoPath — directory containing rotunda.json (default: cwd)
- * @param hostnameOverride — override os.hostname() for testing
- */
-export function loadManifest(repoPath?: string, hostnameOverride?: string): Manifest {
+function formatManifestIssues(issues: z.ZodIssue[]): string {
+  return issues
+    .map((i) => `  • ${i.path.join(".")}: ${i.message}`)
+    .join("\n");
+}
+
+function readManifestDocument(repoPath?: string): {
+  filePath: string;
+  data: ManifestDocument;
+} {
   const dir = repoPath ?? process.cwd();
   const filePath = join(dir, "rotunda.json");
 
@@ -98,15 +104,48 @@ export function loadManifest(repoPath?: string, hostnameOverride?: string): Mani
 
   const result = ManifestSchema.safeParse(json);
   if (!result.success) {
-    const issues = result.error.issues
-      .map((i) => `  • ${i.path.join(".")}: ${i.message}`)
-      .join("\n");
     throw new RotundaError(
-      `Invalid manifest at ${filePath}:\n${issues}`,
+      `Invalid manifest at ${filePath}:\n${formatManifestIssues(result.error.issues)}`,
     );
   }
 
-  const data = result.data;
+  return { filePath, data: result.data };
+}
+
+/**
+ * Load the raw manifest document exactly as stored on disk (with defaults
+ * applied), but without resolving `~` or applying machine-specific overrides.
+ */
+export function loadManifestDocument(repoPath?: string): ManifestDocument {
+  return readManifestDocument(repoPath).data;
+}
+
+/**
+ * Validate and write a manifest document to disk using the repository's
+ * canonical formatting.
+ */
+export function saveManifestDocument(
+  repoPath: string,
+  manifest: ManifestDocument,
+): void {
+  const filePath = join(repoPath, "rotunda.json");
+  const result = ManifestSchema.safeParse(manifest);
+  if (!result.success) {
+    throw new RotundaError(
+      `Refusing to write invalid manifest at ${filePath}:\n${formatManifestIssues(result.error.issues)}`,
+    );
+  }
+
+  writeFileSync(filePath, JSON.stringify(result.data, null, 2) + "\n", "utf-8");
+}
+
+/**
+ * Load and validate rotunda.json, applying machine-specific overrides.
+ * @param repoPath — directory containing rotunda.json (default: cwd)
+ * @param hostnameOverride — override os.hostname() for testing
+ */
+export function loadManifest(repoPath?: string, hostnameOverride?: string): Manifest {
+  const data = loadManifestDocument(repoPath);
   let roots = data.roots.map(resolveRoot);
   let globalExclude = [...data.globalExclude];
   let appliedMachine: string | undefined;

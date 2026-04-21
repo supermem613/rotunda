@@ -4,6 +4,7 @@ import { Command } from "commander";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { addCommand } from "./commands/add.js";
 import { authCommand } from "./commands/auth.js";
 import { bindCommand } from "./commands/bind.js";
 import { cdCommand } from "./commands/cd.js";
@@ -14,6 +15,7 @@ import { initCommand } from "./commands/init.js";
 import { listCommand } from "./commands/list.js";
 import { pullCommand } from "./commands/pull.js";
 import { pushCommand } from "./commands/push.js";
+import { removeCommand } from "./commands/remove.js";
 import { statusCommand } from "./commands/status.js";
 import { syncCommand } from "./commands/sync.js";
 import { updateCommand } from "./commands/update.js";
@@ -31,6 +33,12 @@ program
 
 // Commands are registered in alphabetical order so `rotunda --help` lists
 // them alphabetically (commander preserves registration order in help).
+program
+  .command("add")
+  .description("Add a file or directory path to rotunda tracking, creating a root if needed")
+  .argument("<path>", "Path to the file or directory to start tracking")
+  .action(addCommand);
+
 program
   .command("auth")
   .description("Authenticate with GitHub Copilot (device flow)")
@@ -94,6 +102,12 @@ program
   .description("Push local changes to repo with LLM-assisted review")
   .option("-y, --yes", "Push all changes without review")
   .action(pushCommand);
+
+program
+  .command("remove")
+  .description("Stop tracking a file or directory path, removing repo copies as needed")
+  .argument("<path>", "Path to the file or directory to stop tracking")
+  .action(removeCommand);
 
 program
   .command("status")

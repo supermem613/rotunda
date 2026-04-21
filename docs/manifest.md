@@ -77,6 +77,41 @@ Rotunda uses [minimatch](https://github.com/isaacs/minimatch) for glob pattern m
 3. **If `include` is empty** — all files not excluded are included.
 4. **If `include` is non-empty** — a file must match at least one include pattern to be tracked.
 
+### Managing Tracked Paths
+
+You can grow or shrink tracked scope by pointing Rotunda at an existing local file or directory:
+
+```bash
+rotunda add <path>
+rotunda remove <path>
+```
+
+These commands:
+
+- resolve `~`, absolute paths, and relative paths from your current shell
+- edit the base manifest's `roots[].include` / `roots[].exclude` arrays
+- preview the manifest diff plus repo/state changes
+- require confirmation before any files are copied or deleted
+- commit and push the resulting repo changes
+
+For `add`, Rotunda either:
+
+- adds an inferred include to an existing root, or
+- prompts for a new root name and creates a new root if nothing matches
+
+For `remove`, Rotunda either:
+
+- removes an exact include,
+- adds an exclude when the path sits under a broader include, or
+- removes the whole root when you target that root directory directly
+
+They do **not** manage:
+
+- `globalExclude`
+- `machineOverrides`
+
+If you need to make larger structural edits than that, edit `rotunda.json` directly.
+
 ### Global Excludes
 
 The `globalExclude` array applies to every root. Use it for patterns that should always be excluded regardless of root:

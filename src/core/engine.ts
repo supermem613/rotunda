@@ -21,8 +21,89 @@ export async function discoverFiles(
   globalExclude: string[]
 ): Promise<Map<string, string>> {
   const files = new Map<string, string>();
+  const walkedDirs = new Set<string>();
+
+  function hasGlobMagic(segment: string): boolean {
+    return /[*?[\]{}()!+@]/.test(segment);
+  }
+
+  function normalizePattern(pattern: string): string {
+    return pattern.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+$/, "");
+  }
+
+  function buildDiscoveryPlan(): Array<
+    { kind: "walk"; path: string } | { kind: "file"; path: string; relativePath: string }
+  > {
+    if (include.length === 0) {
+      return [{ kind: "walk", path: rootDir }];
+    }
+
+    let needsRootWalk = false;
+    const walkSeeds: string[] = [];
+    const fileSeeds = new Map<string, string>();
+
+    for (const rawPattern of include) {
+      const pattern = normalizePattern(rawPattern);
+      if (pattern === "" || pattern === "**") {
+        needsRootWalk = true;
+        continue;
+      }
+
+      const segments = pattern.split("/").filter((segment) => segment.length > 0);
+      const staticSegments: string[] = [];
+      for (const segment of segments) {
+        if (segment === "**" || hasGlobMagic(segment)) break;
+        staticSegments.push(segment);
+      }
+
+      if (staticSegments.length === 0) {
+        needsRootWalk = true;
+        continue;
+      }
+
+      const staticPrefix = staticSegments.join("/");
+      const staticPath = join(rootDir, ...staticSegments);
+      const isExactPath = staticSegments.length === segments.length;
+
+      if (isExactPath) {
+        fileSeeds.set(staticPrefix, staticPath);
+        continue;
+      }
+
+      walkSeeds.push(staticPath);
+    }
+
+    if (needsRootWalk) {
+      return [{ kind: "walk", path: rootDir }];
+    }
+
+    const uniqueWalkSeeds = [...new Set(walkSeeds)]
+      .sort((a, b) => a.length - b.length)
+      .filter((candidate, index, seeds) => {
+        const normalizedCandidate = candidate.replace(/\\/g, "/");
+        return !seeds.slice(0, index).some((parent) => {
+          const normalizedParent = parent.replace(/\\/g, "/");
+          return normalizedCandidate === normalizedParent ||
+            normalizedCandidate.startsWith(normalizedParent + "/");
+        });
+      });
+
+    return [
+      ...uniqueWalkSeeds.map((path) => ({ kind: "walk" as const, path })),
+      ...[...fileSeeds.entries()].map(([relativePath, path]) => ({
+        kind: "file" as const,
+        path,
+        relativePath,
+      })),
+    ];
+  }
 
   async function walk(dir: string): Promise<void> {
+    if (walkedDirs.has(dir)) {
+      return;
+    }
+    walkedDirs.add(dir);
+
     let entries;
     try {
       entries = await readdir(dir, { withFileTypes: true });
@@ -48,7 +129,22 @@ export async function discoverFiles(
     }
   }
 
-  await walk(rootDir);
+  for (const seed of buildDiscoveryPlan()) {
+    if (seed.kind === "walk") {
+      await walk(seed.path);
+      continue;
+    }
+
+    try {
+      const entry = await stat(seed.path);
+      if (entry.isFile() && shouldInclude(seed.relativePath, include, exclude, globalExclude)) {
+        files.set(seed.relativePath, seed.path);
+      }
+    } catch {
+      // Seed file doesn't exist or isn't readable — ignore it.
+    }
+  }
+
   return files;
 }
 

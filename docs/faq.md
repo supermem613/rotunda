@@ -7,7 +7,7 @@ No. Use chezmoi for general dotfiles (`.bashrc`, `.gitconfig`, `.zshrc`). Use Ro
 Everything still works — push, pull, status, diff, doctor, list. You just won't get LLM explanations during push/pull, and `doctor --fix` requires auth. Use `-y` to skip the review step.
 
 **Q: Can I add custom sync roots beyond Claude and Copilot?**
-Yes. Edit `rotunda.json` and add any directory pair. Rotunda doesn't care what the files are — it just syncs based on include/exclude patterns. See [Manifest Reference](manifest.md).
+Yes. Rotunda doesn't care what the files are — it syncs whatever your manifest describes. `rotunda add <path>` can now create a brand-new root for you when the path is outside every existing root; it prompts for the root name, previews the new root, then applies it only after confirmation. You can still edit `rotunda.json` directly for larger structural changes. See [Manifest Reference](manifest.md).
 
 **Q: How are conflicts resolved?**
 Rotunda detects conflicts (both sides changed the same file) and surfaces them. With LLM review enabled, Copilot analyzes whether the changes overlap and suggests a merged version. You always have the final say.
@@ -17,6 +17,9 @@ No. `.rotunda/` is gitignored. State is per-machine — each machine tracks its 
 
 **Q: What files does `rotunda init` create by default?**
 The default manifest includes two roots: `~/.claude` (skills, agents, hooks, CLAUDE.md, settings, MCP config) and `~/.copilot` (agents, extensions, hooks, config). Sensitive directories like sessions, cache, credentials, and telemetry are excluded by default.
+
+**Q: When should I use `rotunda add` / `rotunda remove` instead of editing `rotunda.json` manually?**
+Use `rotunda add <path>` / `rotunda remove <path>` when you want Rotunda to infer the right root change from a real file or directory and immediately apply the corresponding repo changes with a preview and confirmation step. Edit `rotunda.json` manually when you need to reshape repo paths, author `machineOverrides`, or make broader manifest edits than a single path addition/removal.
 
 **Q: Does Rotunda modify my git history?**
 `rotunda push` creates a commit in the dotfiles repo with the synced files. It uses a simple commit message like `rotunda push — 5 file(s)`. It does not force-push, rebase, or modify existing history.

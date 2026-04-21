@@ -1,6 +1,6 @@
 # Command Reference
 
-Rotunda provides ten commands for initializing, inspecting, syncing, and maintaining your configuration files. All commands are run from the root of your dotfiles repository (the directory containing `rotunda.json`).
+Rotunda provides commands for initializing, inspecting, curating, syncing, and maintaining your configuration files. All commands are run from the root of your dotfiles repository (the directory containing `rotunda.json`).
 
 ```
 rotunda <command> [options]
@@ -10,16 +10,71 @@ rotunda <command> [options]
 
 | Command            | Purpose                                              |
 |--------------------|------------------------------------------------------|
+| `rotunda add`      | Add a file or directory path, copy matching local files, commit/push |
 | `rotunda init`     | Initialize manifest and state in the current repo    |
 | `rotunda status`   | Show what changed since the last sync                |
 | `rotunda diff`     | Show file-level diffs for modified files             |
 | `rotunda push`     | Push local changes to the repo                       |
 | `rotunda pull`     | Pull repo changes to local                           |
+| `rotunda remove`   | Stop tracking a file or directory path, delete matching repo files, commit/push |
 | `rotunda sync`     | Bidirectional sync with conflict resolution          |
 | `rotunda doctor`   | Structural health check (with `--fix` for LLM repair)|
 | `rotunda list`     | Show manifest roots and captured files               |
 | `rotunda auth`     | Authenticate with GitHub Copilot                     |
 | `rotunda update`   | Self-update: git pull, npm install, rebuild           |
+
+---
+
+## `rotunda add`
+
+Add a file or directory path to tracking, copy matching local files into the repo, then commit and push.
+
+**Synopsis:**
+
+```
+rotunda add <path>
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `path`   | Yes      | Existing local file or directory to start tracking. Supports `~`, absolute paths, and relative paths from your current shell directory. |
+
+**What it does:**
+
+1. Automatically pulls the latest changes from the git remote when the dotfiles repo is a git repo.
+2. Resolves the path, verifies it exists, and decides whether it belongs to an existing root or needs a new root.
+3. If no root matches, prompts for a root name and previews the root it would create.
+4. Previews the manifest change, repo file writes, state updates, and commit/push plan.
+5. Prompts for confirmation.
+6. Writes the updated `rotunda.json`.
+7. Copies matching local files into the repo:
+   - missing repo files are created
+   - differing repo files are overwritten from local
+   - already-matching repo files are left untouched
+8. Updates `.rotunda/state.json` for the newly tracked files.
+9. Creates a git commit and pushes it.
+
+**Notes:**
+
+- Confirmation is always required — there is no `-y` shortcut.
+- This command edits the base manifest only. It does **not** write `machineOverrides`.
+- For an existing root, Rotunda infers the include pattern from the path you pass.
+- For an unmatched path, Rotunda creates a new root after prompting for a name.
+- The preview shows the exact root/include change before anything is copied.
+
+**Good targeted examples:**
+
+```bash
+rotunda add ~/.claude/snippets
+rotunda add ~/.claude/prompts/release
+rotunda add ~/.copilot/prompts
+rotunda add ~/.copilot/policies/review.json
+rotunda add .\sandbox\agent-notes
+```
+
+Prefer specific paths over broad parent directories.
 
 ---
 
@@ -249,6 +304,44 @@ Files that changed on both sides are not pushed. Rotunda warns you and directs y
 **Git integration:**
 
 After copying files, rotunda stages the changed paths and creates a commit with the message `rotunda push — N file(s)`, then pushes it to the remote. The `.rotunda/` state directory is **not** committed — it holds per-machine sync hashes and is gitignored. All three sync commands (`push`, `pull`, `sync`) automatically run `git pull --ff-only` before computing changes to ensure you're working against the latest remote state.
+
+---
+
+## `rotunda remove`
+
+Stop tracking a file or directory path, delete matching repo files as needed, then commit and push.
+
+**Synopsis:**
+
+```
+rotunda remove <path>
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `path`   | Yes      | Existing local file or directory to stop tracking. Supports `~`, absolute paths, and relative paths from your current shell directory. |
+
+**What it does:**
+
+1. Automatically pulls the latest changes from the git remote when the dotfiles repo is a git repo.
+2. Resolves the path, verifies it exists, and finds the root that currently covers it.
+3. Previews the manifest change, repo file deletions, state removals, and commit/push plan.
+4. Prompts for confirmation.
+5. Writes the updated `rotunda.json`.
+6. Deletes matching repo files that would no longer be managed after the path is removed.
+7. Prunes matching `.rotunda/state.json` entries so a future re-add does not misclassify those files.
+8. Creates a git commit and pushes it.
+
+**Notes:**
+
+- Local files are left alone. `rotunda remove` stops tracking the path and removes the repo copies.
+- Confirmation is always required — there is no `-y` shortcut.
+- Depending on the current manifest, Rotunda may:
+  - remove an exact include
+  - add an exclude under a broader include
+  - remove the whole root when you target the root directory itself
 
 ---
 

@@ -118,6 +118,35 @@ The first sync on a fresh clone almost always shows lots of changes — local ha
 
 After sync, your local and repo are in lock-step. From here on, just run `rotunda sync` whenever you've made changes on either side.
 
+### 6. Expand coverage one path at a time
+
+When you want Rotunda to start tracking something new, point Rotunda at the exact file or directory and inspect the preview before anything is copied or deleted.
+
+**Claude (`.claude`) examples:**
+
+```bash
+rotunda add ~/.claude/snippets
+rotunda add ~/.claude/prompts/release
+```
+
+**Copilot (`.copilot`) examples:**
+
+```bash
+rotunda add ~/.copilot/prompts
+rotunda add ~/.copilot/policies/review.json
+```
+
+Each `rotunda add` / `rotunda remove` run previews:
+
+- the `rotunda.json` root/include/exclude change
+- repo file writes or deletes
+- sync-state updates
+- the commit/push plan
+
+If the path is already covered by a root, Rotunda updates that root automatically. If nothing matches, it asks for a root name, previews the new root it would create, and only applies anything after you confirm.
+
+Prefer targeted paths like `~/.claude/snippets` or `~/.copilot/policies/review.json` over broad catch-alls like `~/.claude`.
+
 ---
 
 ## ✨ Features
@@ -167,7 +196,7 @@ See [Command Reference](docs/commands.md#rotunda-doctor) for all 10 checks.
 
 ### Manifest-Driven Configuration
 
-One `rotunda.json` declares what to sync — directory pairs with include/exclude globs. Add any directory, not just Claude and Copilot. See [Manifest Reference](docs/manifest.md).
+One `rotunda.json` declares what to sync — directory pairs with include/exclude globs. Use `rotunda add <path>` / `rotunda remove <path>` to grow or shrink tracked scope one path at a time, or edit the manifest directly when you need bigger structural changes. See [Manifest Reference](docs/manifest.md).
 
 ### Three-Way Change Detection
 
@@ -206,6 +235,7 @@ rotunda list
 
 | Command | Description |
 |---------|-------------|
+| `rotunda add <path>` | Add a file or directory path to tracking, copy matching local files into the repo, then commit/push |
 | `rotunda auth [--force]` | Authenticate with GitHub Copilot (device flow) |
 | `rotunda bind [path]` | Bind rotunda to a dotfiles repo (defaults to cwd). `--show` prints current binding, `--unset` clears it |
 | `rotunda cd` | Spawn a subshell whose working directory is the bound dotfiles repo |
@@ -216,6 +246,7 @@ rotunda list
 | `rotunda list [--local] [--repo]` | Show manifest roots and what files are actually captured |
 | `rotunda pull [-y]` | Pull repo changes to local (with LLM review) |
 | `rotunda push [-y]` | Push local changes to repo (with LLM review) |
+| `rotunda remove <path>` | Stop tracking a file or directory path, delete matching repo files, then commit/push |
 | `rotunda status` | Show what changed since last sync |
 | `rotunda sync [-y]` | Bidirectional sync with conflict resolution |
 | `rotunda update` | Self-update: git pull, npm install, and rebuild rotunda |
