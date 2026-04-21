@@ -75,6 +75,29 @@ export async function gitStatus(
   return result.stdout.trim();
 }
 
+function isLineEndingConversionError(err: unknown): boolean {
+  const error = err as Error & { stdout?: string; stderr?: string };
+  const combined = [
+    error.message ?? "",
+    error.stdout ?? "",
+    error.stderr ?? "",
+  ].join("\n");
+
+  return combined.includes("LF would be replaced by CRLF") ||
+    combined.includes("CRLF would be replaced by LF");
+}
+
+async function gitAddWithTransientLineEndingConfig(
+  cwd: string,
+  paths: string[],
+): Promise<void> {
+  await git([
+    "-c", "core.autocrlf=false",
+    "-c", "core.safecrlf=false",
+    "add", "--", ...paths,
+  ], cwd);
+}
+
 /**
  * Stage, commit, and optionally push.
  */
@@ -84,7 +107,14 @@ export async function gitCommitAndPush(
   message: string,
   push = false
 ): Promise<void> {
-  await git(["add", ...paths], cwd);
+  try {
+    await git(["add", "--", ...paths], cwd);
+  } catch (err) {
+    if (!isLineEndingConversionError(err)) {
+      throw err;
+    }
+    await gitAddWithTransientLineEndingConfig(cwd, paths);
+  }
   await git(["commit", "-m", message], cwd);
   if (push) {
     await git(["push"], cwd);

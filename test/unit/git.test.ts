@@ -244,6 +244,25 @@ describe("gitCommitAndPush", () => {
     }).toString().trim();
     assert.ok(show.includes("staged.txt"), "staged.txt should be in the commit");
   });
+
+  it("recovers from CRLF-safe staging errors with one-off git config only", async () => {
+    execFileSync("git", ["config", "--local", "core.autocrlf", "true"], { cwd: REPO });
+    execFileSync("git", ["config", "--local", "core.safecrlf", "true"], { cwd: REPO });
+    writeFileSync(join(REPO, "lf-only.txt"), "one\ntwo\n");
+
+    await gitCommitAndPush(REPO, ["lf-only.txt"], "commit lf file", false);
+
+    const log = execFileSync("git", ["log", "--oneline", "-1"], { cwd: REPO }).toString();
+    assert.ok(log.includes("commit lf file"));
+    const repoAutocrlf = execFileSync("git", ["config", "--local", "--get", "core.autocrlf"], {
+      cwd: REPO,
+    }).toString().trim();
+    const repoSafecrlf = execFileSync("git", ["config", "--local", "--get", "core.safecrlf"], {
+      cwd: REPO,
+    }).toString().trim();
+    assert.equal(repoAutocrlf, "true");
+    assert.equal(repoSafecrlf, "true");
+  });
 });
 
 // --- isPathIgnored ---

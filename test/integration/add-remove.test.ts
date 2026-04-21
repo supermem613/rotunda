@@ -176,6 +176,27 @@ describe("rotunda add", () => {
     assert.ok(existsSync(join(DOTFILES, ".home", ".c.json")));
   });
 
+  it("commits successfully when repo-local CRLF conversion would otherwise block git add", () => {
+    execFileSync("git", ["config", "--local", "core.autocrlf", "true"], { cwd: DOTFILES });
+    execFileSync("git", ["config", "--local", "core.safecrlf", "true"], { cwd: DOTFILES });
+    mkdirSync(FAKE_HOME, { recursive: true });
+    writeFileSync(join(FAKE_HOME, ".crlf-repro.json"), "{\"enabled\":true}\n");
+
+    const output = runCli(["add", "~/.crlf-repro.json"], DOTFILES, "\ny\n");
+
+    assert.ok(output.includes("Committed and pushed"), output);
+    const repoAutocrlf = execFileSync("git", ["config", "--local", "--get", "core.autocrlf"], {
+      cwd: DOTFILES,
+      encoding: "utf-8",
+    }).trim();
+    const repoSafecrlf = execFileSync("git", ["config", "--local", "--get", "core.safecrlf"], {
+      cwd: DOTFILES,
+      encoding: "utf-8",
+    }).trim();
+    assert.equal(repoAutocrlf, "true");
+    assert.equal(repoSafecrlf, "true");
+  });
+
   it("cancels cleanly without changing the manifest or repo files", () => {
     mkdirSync(join(LOCAL_CLAUDE, "skills", "draft"), { recursive: true });
     writeFileSync(join(LOCAL_CLAUDE, "skills", "draft", "SKILL.md"), "# Draft");
