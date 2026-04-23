@@ -55,6 +55,14 @@ describe("layout / list view fits viewport at multiple sizes", () => {
   }
 });
 
+describe("layout / footer guidance", () => {
+  it("documents space skip in the list footer", () => {
+    const state: AppState = initialState([fc({ action: "conflict", side: "both", repoHash: "rh" })], { cols: 120, rows: 24 });
+    const out = stripAnsi(render(state));
+    assert.match(out, /SPACE skip/);
+  });
+});
+
 describe("layout / diff modal", () => {
   it("renders diff lines and respects diff scroll", () => {
     let state: AppState = initialState([fc({ action: "modified", side: "local" })], { cols: 80, rows: 24 });

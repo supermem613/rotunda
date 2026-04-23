@@ -143,7 +143,7 @@ function footerLine(state: AppState, cols: number): string {
   // discoverable on the second line.
   const primary = `${chalk.bold.green("[a]")} apply  ·  ${chalk.bold.red("[ESC]")} cancel & quit`;
   const details =
-    "↑/↓ move · ←/→ change action · ENTER diff · m merge · e edit · d defer · " +
+    "↑/↓ move · ←/→ change action · SPACE skip · ENTER diff · m merge · e edit · d defer · " +
     "/ filter · c conflicts · 1 repo-wins · 2 local-wins · 3 skip-all · 4 reset";
   const status = state.message ? "  " + formatStatusForFooter(state.message) : "";
   return padRow(primary + status, cols) + "\n" + padRow(chalk.dim(details), cols);

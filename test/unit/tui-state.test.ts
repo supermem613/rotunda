@@ -125,9 +125,21 @@ describe("reduce / cycle action", () => {
     assert.equal(s.rows[0].action, "push");
   });
 
-  it("conflict cycle is keep-repo / keep-local", () => {
+  it("conflict cycle is keep-repo / keep-local / skip", () => {
     const cycle = actionCycle(fc({ action: "conflict", side: "both", repoHash: "rh" }));
-    assert.deepEqual(cycle, ["keep-repo", "keep-local"]);
+    assert.deepEqual(cycle, ["keep-repo", "keep-local", "skip"]);
+  });
+
+  it("conflict rows cycle through keep-repo → keep-local → skip", () => {
+    let s: AppState = initialState([fc({ action: "conflict", side: "both", repoHash: "rh" })], vp());
+    s = reduce(s, k("right"));
+    assert.equal(s.rows[0].action, "keep-repo");
+    s = reduce(s, k("right"));
+    assert.equal(s.rows[0].action, "keep-local");
+    s = reduce(s, k("right"));
+    assert.equal(s.rows[0].action, "skip");
+    s = reduce(s, k("right"));
+    assert.equal(s.rows[0].action, "keep-repo");
   });
 
   it("space sets row to skip", () => {
@@ -265,9 +277,20 @@ describe("apply preview gate", () => {
     assert.match(s.message ?? "", /unresolved conflict/);
   });
 
-  it("ENTER after resolving conflicts commits", () => {
+  it("ENTER after deferring a conflict commits", () => {
     let s: AppState = initialState([fc({ action: "conflict", side: "both", repoHash: "rh" })], vp());
     s = reduce(s, k("d")); // defer it
+    s = reduce(s, k("a"));
+    s = reduce(s, k("enter"));
+    assert.equal(s.applyConfirmed, true);
+  });
+
+  it("ENTER after skipping a conflict commits", () => {
+    let s: AppState = initialState([fc({ action: "conflict", side: "both", repoHash: "rh" })], vp());
+    s = reduce(s, k("right"));
+    s = reduce(s, k("right"));
+    s = reduce(s, k("right"));
+    assert.equal(s.rows[0].action, "skip");
     s = reduce(s, k("a"));
     s = reduce(s, k("enter"));
     assert.equal(s.applyConfirmed, true);

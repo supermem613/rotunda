@@ -451,9 +451,9 @@ function reducePreview(state: AppState, key: Key): AppState {
  */
 export function actionCycle(change: FileChange): ResolvedAction[] {
   if (change.action === "conflict") {
-    // For conflicts, ←/→ cycles only the two trivial picks. Merge / defer /
+    // For conflicts, ←/→ cycles the two winner picks plus skip. Merge / defer /
     // editor are letter-keys that jump out of the cycle.
-    return ["keep-repo", "keep-local"];
+    return ["keep-repo", "keep-local", "skip"];
   }
   if (change.side === "local") {
     if (change.action === "deleted") return ["delete-repo", "skip"];

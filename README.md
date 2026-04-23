@@ -106,11 +106,12 @@ The first sync on a fresh clone almost always shows lots of changes — local ha
   ⚠ CONFLICT    .copilot/permissions-config.json          (both sides changed)
   ...
 
-  ↑/↓ navigate  ←/→ change action  ENTER show diff  m merge  R repo-wins  L local-wins
+  ↑/↓ navigate  ←/→ change action  SPACE skip  ENTER show diff  m merge  R repo-wins  L local-wins
   [a] apply  ·  [ESC] cancel & quit
 ```
 
-- **←/→** cycle the per-row action: `PUSH` / `PULL` / `DELETE-LOCAL` / `DELETE-REPO` / `SKIP`.
+- **←/→** cycle the per-row action. For conflicts, that includes `KEEP R` / `KEEP L` / `SKIP`.
+- **SPACE** sets the current row to `SKIP` immediately.
 - **ENTER** opens a scrollable diff overlay (ESC to close).
 - **R** / **L** bulk-pick a winner for every row at once (handy on first sync).
 - **m** drops a conflict into a `<<<<<<<` merge file you can resolve in your editor.
