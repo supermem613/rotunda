@@ -11,7 +11,7 @@
 import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
-import { gitDiffFiles } from "../utils/git.js";
+import { renderContentDiff } from "../utils/git.js";
 import { loadToken } from "../llm/auth.js";
 import { mergeViaLLM } from "../llm/merge.js";
 import type { Manifest, FileChange, SyncState } from "../core/types.js";
@@ -171,7 +171,10 @@ async function loadDiff(rowIndex: number, opts: RunTuiOptions): Promise<string> 
       const content = await readFile(localFile, "utf-8").catch(() => "(unreadable)");
       return `--- repo (deleted)\n${prefix(content, "- ")}`;
     }
-    return await gitDiffFiles(repoFile, localFile);
+    return await renderContentDiff(repoFile, localFile, {
+      file1Role: "repo",
+      file2Role: "local",
+    });
   } catch (err) {
     return `(diff failed: ${err instanceof Error ? err.message : String(err)})`;
   }

@@ -2,7 +2,7 @@ import chalk from "chalk";
 import { loadRepoContext } from "../core/repo-context.js";
 import { loadState } from "../core/state.js";
 import { computeAllChanges } from "../core/engine.js";
-import { gitDiffFiles } from "../utils/git.js";
+import { renderContentDiff } from "../utils/git.js";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -87,7 +87,11 @@ export async function diffCommand(
 
       if (c.action === "modified" || c.action === "conflict") {
         try {
-          const diff = await gitDiffFiles(repoFile, localFile, true);
+          const diff = await renderContentDiff(repoFile, localFile, {
+            color: true,
+            file1Role: "repo",
+            file2Role: "local",
+          });
           if (diff) console.log(diff);
         } catch {
           console.log(chalk.dim(`  (could not diff ${c.relativePath})`));

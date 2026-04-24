@@ -1,5 +1,8 @@
 import { execFile } from "node:child_process";
 import { realpathSync } from "node:fs";
+import { lstat, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -181,4 +184,115 @@ export async function gitDiffFiles(
   // git diff --no-index doesn't need a repo, cwd doesn't matter
   const result = await git(args, ".");
   return result.stdout;
+}
+
+export type DiffSide = {
+  path: string;
+  role: string;
+  isSymlink: boolean;
+  target?: string;
+};
+
+async function getDiffSide(path: string, role: string): Promise<DiffSide> {
+  try {
+    const entry = await lstat(path);
+    if (!entry.isSymbolicLink()) {
+      return { path, role, isSymlink: false };
+    }
+
+    let target: string | undefined;
+    try {
+      target = realpathSync.native(path).replace(/\\/g, "/");
+    } catch {
+      target = undefined;
+    }
+    return { path, role, isSymlink: true, target };
+  } catch {
+    return { path, role, isSymlink: false };
+  }
+}
+
+export function renderSymlinkNotes(sides: DiffSide[]): string[] {
+  return sides
+    .filter((side) => side.isSymlink)
+    .map((side) => `  (${side.role} is symlink -> ${side.target ?? side.path.replace(/\\/g, "/")})`);
+}
+
+export function rewriteDiffPaths(diff: string, replacements: Array<{ from: string; to: string }>): string {
+  let rewritten = diff;
+  for (const replacement of replacements) {
+    const variants = new Set([
+      replacement.from,
+      replacement.from.replace(/\\/g, "\\\\"),
+      replacement.from.replace(/\\/g, "/"),
+    ]);
+    for (const variant of variants) {
+      rewritten = rewritten.split(variant).join(replacement.to);
+    }
+  }
+  return rewritten;
+}
+
+export function formatSymlinkAwareDiff(
+  diff: string,
+  sides: DiffSide[],
+  replacements: Array<{ from: string; to: string }>,
+): string {
+  const notes = renderSymlinkNotes(sides);
+  const rewritten = rewriteDiffPaths(diff, replacements);
+
+  if (notes.length === 0) {
+    return rewritten;
+  }
+  if (!rewritten) {
+    return notes.join("\n");
+  }
+  return `${notes.join("\n")}\n${rewritten}`;
+}
+
+/**
+ * Render a modified/conflict diff, dereferencing symlink content when needed so
+ * the output reflects file contents rather than file-vs-symlink mode changes.
+ */
+export async function renderContentDiff(
+  file1: string,
+  file2: string,
+  options?: {
+    color?: boolean;
+    file1Role?: string;
+    file2Role?: string;
+  },
+): Promise<string> {
+  const color = options?.color ?? false;
+  const sides = await Promise.all([
+    getDiffSide(file1, options?.file1Role ?? "left"),
+    getDiffSide(file2, options?.file2Role ?? "right"),
+  ]);
+
+  if (!sides.some((side) => side.isSymlink)) {
+    return gitDiffFiles(file1, file2, color);
+  }
+
+  const tempDir = await mkdtemp(join(tmpdir(), "rotunda-diff-"));
+  const leftTemp = join(tempDir, "left");
+  const rightTemp = join(tempDir, "right");
+
+  try {
+    const [leftContent, rightContent] = await Promise.all([
+      readFile(file1),
+      readFile(file2),
+    ]);
+    await Promise.all([
+      writeFile(leftTemp, leftContent),
+      writeFile(rightTemp, rightContent),
+    ]);
+
+    const diff = await gitDiffFiles(leftTemp, rightTemp, color);
+    return formatSymlinkAwareDiff(diff, sides, [
+      { from: leftTemp, to: file1 },
+      { from: rightTemp, to: file2 },
+    ]);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
 }

@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { join, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
@@ -11,6 +11,11 @@ import {
   gitStatus,
   gitCommitAndPush,
   gitDiffFiles,
+  formatSymlinkAwareDiff,
+  renderContentDiff,
+  renderSymlinkNotes,
+  rewriteDiffPaths,
+  type DiffSide,
   isPathIgnored,
 } from "../../src/utils/git.js";
 
@@ -36,6 +41,15 @@ function cloneRepo(bare: string, dest: string): void {
 
 function cleanup(): void {
   rmSync(TMP, { recursive: true, force: true });
+}
+
+function tryCreateFileSymlink(linkPath: string, targetPath: string): boolean {
+  try {
+    symlinkSync(targetPath, linkPath, "file");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // --- isGitRepo ---
@@ -343,6 +357,136 @@ describe("gitDiffFiles", () => {
 
     const diff = await gitDiffFiles(f1, f2);
     assert.equal(diff, "");
+  });
+});
+
+describe("renderContentDiff", () => {
+  beforeEach(() => rmSync(TMP, { recursive: true, force: true }));
+  afterEach(cleanup);
+
+  it("renders dereferenced content for a local symlink without file mode noise", async (t) => {
+    mkdirSync(TMP, { recursive: true });
+    const repoFile = join(TMP, "repo-claude.md");
+    const authorityFile = join(TMP, "copilot-instructions.md");
+    const localLink = join(TMP, "CLAUDE.md");
+
+    writeFileSync(repoFile, "repo line\nshared\n");
+    writeFileSync(authorityFile, "local line\nshared\n");
+    if (!tryCreateFileSymlink(localLink, authorityFile)) {
+      t.skip("file symlink creation is not available in this environment");
+      return;
+    }
+
+    const diff = await renderContentDiff(repoFile, localLink, {
+      file1Role: "repo",
+      file2Role: "local",
+    });
+
+    assert.ok(diff.includes("(local is symlink ->"), diff);
+    assert.ok(diff.includes(repoFile), diff);
+    assert.ok(diff.includes(localLink), diff);
+    assert.ok(diff.includes("-repo line"), diff);
+    assert.ok(diff.includes("+local line"), diff);
+    assert.ok(!diff.includes("deleted file mode"), diff);
+    assert.ok(!diff.includes("new file mode 120000"), diff);
+    assert.ok(!diff.includes("rotunda-diff-"), diff);
+  });
+
+  it("renders dereferenced content for a repo symlink and annotates the repo side", async (t) => {
+    mkdirSync(TMP, { recursive: true });
+    const repoAuthority = join(TMP, "repo-authority.md");
+    const repoLink = join(TMP, "repo-link.md");
+    const localFile = join(TMP, "local-file.md");
+
+    writeFileSync(repoAuthority, "repo authoritative\n");
+    writeFileSync(localFile, "local authoritative\n");
+    if (!tryCreateFileSymlink(repoLink, repoAuthority)) {
+      t.skip("file symlink creation is not available in this environment");
+      return;
+    }
+
+    const diff = await renderContentDiff(repoLink, localFile, {
+      file1Role: "repo",
+      file2Role: "local",
+    });
+
+    assert.ok(diff.includes("(repo is symlink ->"), diff);
+    assert.ok(diff.includes(repoLink), diff);
+    assert.ok(diff.includes(localFile), diff);
+    assert.ok(diff.includes("-repo authoritative"), diff);
+    assert.ok(diff.includes("+local authoritative"), diff);
+    assert.ok(!diff.includes("deleted file mode"), diff);
+    assert.ok(!diff.includes("new file mode 120000"), diff);
+    assert.ok(!diff.includes("rotunda-diff-"), diff);
+  });
+});
+
+describe("symlink diff formatting helpers", () => {
+  it("renders symlink notes with normalized targets", () => {
+    const sides: DiffSide[] = [
+      {
+        path: "C:\\repo\\file.txt",
+        role: "local",
+        isSymlink: true,
+        target: "C:/authority/file.txt",
+      },
+      {
+        path: "C:\\repo\\other.txt",
+        role: "repo",
+        isSymlink: false,
+      },
+    ];
+
+    assert.deepEqual(renderSymlinkNotes(sides), [
+      "  (local is symlink -> C:/authority/file.txt)",
+    ]);
+  });
+
+  it("rewrites raw, escaped, and slash-normalized temp paths in diff headers", () => {
+    const diff = [
+      'diff --git "a/C:\\\\Temp\\\\rotunda-diff-abc\\\\left" "b/C:/Temp/rotunda-diff-abc/right"',
+      '--- "a/C:\\Temp\\rotunda-diff-abc\\left"',
+      '+++ "b/C:\\\\Temp\\\\rotunda-diff-abc\\\\right"',
+    ].join("\n");
+
+    const rewritten = rewriteDiffPaths(diff, [
+      { from: "C:\\Temp\\rotunda-diff-abc\\left", to: "C:\\repo\\left.txt" },
+      { from: "C:\\Temp\\rotunda-diff-abc\\right", to: "C:\\repo\\right.txt" },
+    ]);
+
+    assert.ok(rewritten.includes('diff --git "a/C:\\repo\\left.txt" "b/C:\\repo\\right.txt"'), rewritten);
+    assert.ok(rewritten.includes('--- "a/C:\\repo\\left.txt"'), rewritten);
+    assert.ok(rewritten.includes('+++ "b/C:\\repo\\right.txt"'), rewritten);
+    assert.ok(!rewritten.includes("rotunda-diff-abc"), rewritten);
+  });
+
+  it("combines symlink notes with rewritten diff output", () => {
+    const sides: DiffSide[] = [
+      { path: "C:\\repo\\linked.txt", role: "local", isSymlink: true, target: "C:/authority/linked.txt" },
+      { path: "C:\\repo\\repo.txt", role: "repo", isSymlink: false },
+    ];
+    const diff = 'diff --git "a/C:\\\\tmp\\\\left" "b/C:\\\\tmp\\\\right"\n-line one\n+line two\n';
+
+    const formatted = formatSymlinkAwareDiff(diff, sides, [
+      { from: "C:\\tmp\\left", to: "C:\\repo\\repo.txt" },
+      { from: "C:\\tmp\\right", to: "C:\\repo\\linked.txt" },
+    ]);
+
+    assert.ok(formatted.startsWith("  (local is symlink -> C:/authority/linked.txt)"), formatted);
+    assert.ok(formatted.includes('diff --git "a/C:\\repo\\repo.txt" "b/C:\\repo\\linked.txt"'), formatted);
+    assert.ok(formatted.includes("-line one"), formatted);
+    assert.ok(formatted.includes("+line two"), formatted);
+  });
+
+  it("returns notes only when symlink-aware content diff is otherwise empty", () => {
+    const sides: DiffSide[] = [
+      { path: "C:\\repo\\linked.txt", role: "repo", isSymlink: true, target: "C:/authority/linked.txt" },
+      { path: "C:\\repo\\local.txt", role: "local", isSymlink: false },
+    ];
+
+    const formatted = formatSymlinkAwareDiff("", sides, []);
+
+    assert.equal(formatted, "  (repo is symlink -> C:/authority/linked.txt)");
   });
 });
 
