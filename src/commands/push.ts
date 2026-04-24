@@ -1,5 +1,6 @@
 import chalk from "chalk";
 import { loadRepoContext } from "../core/repo-context.js";
+import { loadManifest } from "../core/manifest.js";
 import { loadState, saveState, updateStateFiles, removeFromState } from "../core/state.js";
 import { computeAllChanges } from "../core/engine.js";
 import { gitCommitAndPush, isGitRepo, gitPull } from "../utils/git.js";
@@ -23,7 +24,9 @@ async function confirm(prompt: string): Promise<boolean> {
 }
 
 export async function pushCommand(options: { yes?: boolean }): Promise<void> {
-  const { cwd, manifest } = loadRepoContext();
+  const ctx = loadRepoContext();
+  const cwd = ctx.cwd;
+  let manifest = ctx.manifest;
 
   await withLock(cwd, "push", async () => {
   // Pull latest from remote before computing changes
@@ -32,6 +35,8 @@ export async function pushCommand(options: { yes?: boolean }): Promise<void> {
       const pulled = await gitPull(cwd);
       if (pulled) {
         console.log(chalk.dim("  ↓ Pulled latest from remote."));
+        // Reload manifest in case the pull updated include/exclude/roots.
+        manifest = loadManifest(cwd);
       }
     } catch {
       console.log(chalk.yellow("  ⚠ git pull failed — continuing with local state."));

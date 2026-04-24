@@ -1,5 +1,6 @@
 import chalk from "chalk";
 import { loadRepoContext } from "../core/repo-context.js";
+import { loadManifest } from "../core/manifest.js";
 import { loadState, saveState } from "../core/state.js";
 import { computeAllChanges } from "../core/engine.js";
 import { withLock } from "../utils/lock.js";
@@ -9,13 +10,22 @@ import { initialState, type Row } from "../tui/state.js";
 import { planApply, executeApply } from "../sync/apply.js";
 
 export async function syncCommand(options: { yes?: boolean }): Promise<void> {
-  const { cwd, manifest } = loadRepoContext();
+  const ctx = loadRepoContext();
+  const cwd = ctx.cwd;
+  let manifest = ctx.manifest;
 
   await withLock(cwd, "sync", async () => {
     if (await isGitRepo(cwd)) {
       try {
         const pulled = await gitPull(cwd);
-        if (pulled) console.log(chalk.dim("  ↓ Pulled latest from remote."));
+        if (pulled) {
+          console.log(chalk.dim("  ↓ Pulled latest from remote."));
+          // Reload manifest: the pull may have brought in new include/exclude
+          // patterns or roots. Without this, the first sync after a remote
+          // manifest change would still use the pre-pull manifest, missing
+          // any newly-mapped files until a second sync.
+          manifest = loadManifest(cwd);
+        }
       } catch {
         console.log(chalk.yellow("  ⚠ git pull failed — continuing with local state."));
       }
