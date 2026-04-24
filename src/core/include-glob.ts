@@ -59,6 +59,7 @@ export interface TrackingPlan {
   target: TrackingTarget;
   rootName: string;
   rootLocal: string;
+  rootManifestLocal: string;
   rootRepo: string;
   inferredPattern: string;
   manifestMutation: {
@@ -582,11 +583,15 @@ export async function planTrackingPathChange(
     throw new RotundaErrorClass("Internal error: manifest mutation was not determined.");
   }
 
+  const rootManifestLocal = beforeRawRoot?.local
+    ?? (afterRuntimeRoot ? toManifestLocalPath(afterRuntimeRoot.local) : toManifestLocalPath(rootLocal));
+
   return {
     kind,
     target,
     rootName,
     rootLocal,
+    rootManifestLocal,
     rootRepo,
     inferredPattern,
     manifestMutation,

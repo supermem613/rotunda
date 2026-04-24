@@ -65,6 +65,19 @@ function getRemoteLog(): string {
   return execFileSync("git", ["log", "--oneline", "--all"], { cwd: BARE, encoding: "utf-8" });
 }
 
+function assertPreviewLine(output: string, expected: string): void {
+  assert.ok(output.includes(expected), `Expected preview line "${expected}" in output:\n${output}`);
+}
+
+function assertNoApplyDetailLines(output: string): void {
+  assert.ok(!output.includes("STATE +"), output);
+  assert.ok(!output.includes("STATE -"), output);
+  assert.ok(!output.includes("ADD "), output);
+  assert.ok(!output.includes("OVERWRITE "), output);
+  assert.ok(!output.includes("DEL-REPO "), output);
+  assert.ok(!output.includes("TRACK "), output);
+}
+
 function setupRepo(roots: Array<{
   name: string;
   local: string;
@@ -141,8 +154,17 @@ describe("rotunda add", () => {
     assert.ok(!output.includes("Repo changes:"), output);
     assert.ok(!output.includes("State changes:"), output);
     assert.ok(output.includes("Proceed with add?"), output);
-    assert.ok(output.includes("add  rotunda.json"), output);
-    assert.ok(output.includes("add  .claude/skills/commit/SKILL.md"), output);
+    assertPreviewLine(output, "root");
+    assertPreviewLine(output, "claude");
+    assertPreviewLine(output, "root   claude");
+    assertPreviewLine(output, "local  " + LOCAL_CLAUDE);
+    assertPreviewLine(output, "repo   .claude");
+    assertPreviewLine(output, "include +");
+    assert.ok(output.includes("skills/commit/**"), output);
+    assertPreviewLine(output, "update  rotunda.json");
+    assertPreviewLine(output, "add  .claude/skills/commit/SKILL.md");
+    assert.ok(!output.includes("add  rotunda.json"), output);
+    assertNoApplyDetailLines(output);
     assert.ok(output.includes("Committed and pushed"), output);
 
     const manifest = JSON.parse(readFileSync(join(DOTFILES, "rotunda.json"), "utf-8")) as {
@@ -155,6 +177,24 @@ describe("rotunda add", () => {
     assert.ok(existsSync(join(CLONE_A, ".claude", "skills", "commit", "SKILL.md")));
   });
 
+  it("shows update for repo files that already exist and will be overwritten", () => {
+    mkdirSync(join(LOCAL_CLAUDE, "prompts"), { recursive: true });
+    mkdirSync(join(DOTFILES, ".claude", "prompts"), { recursive: true });
+    writeFileSync(join(LOCAL_CLAUDE, "prompts", "review.md"), "# Local review");
+    writeFileSync(join(DOTFILES, ".claude", "prompts", "review.md"), "# Repo review");
+    execFileSync("git", ["add", "."], { cwd: DOTFILES });
+    execFileSync("git", ["commit", "-m", "seed repo prompt"], { cwd: DOTFILES });
+    execFileSync("git", ["push"], { cwd: DOTFILES });
+
+    const output = runCli(["add", join(LOCAL_CLAUDE, "prompts", "review.md")], DOTFILES, "y\n");
+
+    assertPreviewLine(output, "update  rotunda.json");
+    assertPreviewLine(output, "update  .claude/prompts/review.md");
+    assert.ok(!output.includes("add  .claude/prompts/review.md"), output);
+    assertNoApplyDetailLines(output);
+    assert.equal(readFileSync(join(DOTFILES, ".claude", "prompts", "review.md"), "utf-8"), "# Local review");
+  });
+
   it("creates a new root when no existing root matches", () => {
     mkdirSync(FAKE_HOME, { recursive: true });
     writeFileSync(join(FAKE_HOME, ".c.json"), "{\"enabled\":true}");
@@ -163,6 +203,15 @@ describe("rotunda add", () => {
 
     assert.ok(output.includes("Root name [home]"), output);
     assert.ok(output.includes("Proceed with add?"), output);
+    assertPreviewLine(output, "create root");
+    assertPreviewLine(output, "home");
+    assertPreviewLine(output, "local  ~");
+    assertPreviewLine(output, "repo   .home");
+    assertPreviewLine(output, "include +");
+    assertPreviewLine(output, "update  rotunda.json");
+    assertPreviewLine(output, "add  .home/.c.json");
+    assert.ok(!output.includes("add  rotunda.json"), output);
+    assertNoApplyDetailLines(output);
     assert.ok(output.includes("Committed and pushed"), output);
 
     const manifest = JSON.parse(readFileSync(join(DOTFILES, "rotunda.json"), "utf-8")) as {
@@ -205,6 +254,7 @@ describe("rotunda add", () => {
     const output = runCli(["add", join(LOCAL_CLAUDE, "skills", "draft")], DOTFILES, "n\n");
 
     assert.ok(output.includes("Proceed with add?"), output);
+    assertPreviewLine(output, "update  rotunda.json");
     assert.ok(output.includes("Cancelled"), output);
     const manifest = JSON.parse(readFileSync(join(DOTFILES, "rotunda.json"), "utf-8")) as {
       roots: Array<{ include: string[] }>;
@@ -252,8 +302,14 @@ describe("rotunda remove", () => {
     assert.ok(!output.includes("Repo changes:"), output);
     assert.ok(!output.includes("State changes:"), output);
     assert.ok(output.includes("Proceed with remove?"), output);
-    assert.ok(output.includes("add  rotunda.json"), output);
-    assert.ok(output.includes("remove  .claude/skills/commit/SKILL.md"), output);
+    assertPreviewLine(output, "root   claude");
+    assertPreviewLine(output, "local  " + LOCAL_CLAUDE);
+    assertPreviewLine(output, "repo   .claude");
+    assertPreviewLine(output, "exclude +");
+    assertPreviewLine(output, "update  rotunda.json");
+    assertPreviewLine(output, "remove  .claude/skills/commit/SKILL.md");
+    assert.ok(!output.includes("add  rotunda.json"), output);
+    assertNoApplyDetailLines(output);
     assert.ok(output.includes("Committed and pushed"), output);
 
     const manifest = JSON.parse(readFileSync(join(DOTFILES, "rotunda.json"), "utf-8")) as {
@@ -269,6 +325,46 @@ describe("rotunda remove", () => {
     };
     assert.ok(!state.files[".claude/skills/commit/SKILL.md"]);
     assert.ok(!state.files[".claude/skills/commit/stale.md"]);
+  });
+
+  it("removes an exact include when that path has its own include entry", () => {
+    setupRepo([{ name: "claude", local: LOCAL_CLAUDE, repo: ".claude", include: ["CLAUDE.md", "skills/commit/**"] }]);
+    mkdirSync(join(LOCAL_CLAUDE, "skills", "commit"), { recursive: true });
+    mkdirSync(join(DOTFILES, ".claude", "skills", "commit"), { recursive: true });
+    writeFileSync(join(LOCAL_CLAUDE, "CLAUDE.md"), "# Claude");
+    writeFileSync(join(LOCAL_CLAUDE, "skills", "commit", "SKILL.md"), "# Commit");
+    writeFileSync(join(DOTFILES, ".claude", "CLAUDE.md"), "# Claude");
+    writeFileSync(join(DOTFILES, ".claude", "skills", "commit", "SKILL.md"), "# Commit");
+    writeState({
+      ".claude/CLAUDE.md": {
+        hash: "hash-root",
+        size: 0,
+        syncedAt: new Date().toISOString(),
+      },
+      ".claude/skills/commit/SKILL.md": {
+        hash: "hash-commit",
+        size: 0,
+        syncedAt: new Date().toISOString(),
+      },
+    });
+    execFileSync("git", ["add", "."], { cwd: DOTFILES });
+    execFileSync("git", ["commit", "-m", "seed exact include"], { cwd: DOTFILES });
+    execFileSync("git", ["push"], { cwd: DOTFILES });
+
+    const output = runCli(["remove", join(LOCAL_CLAUDE, "skills", "commit")], DOTFILES, "y\n");
+
+    assertPreviewLine(output, "root   claude");
+    assertPreviewLine(output, "include -");
+    assertPreviewLine(output, "skills/commit/**");
+    assertPreviewLine(output, "update  rotunda.json");
+    assertPreviewLine(output, "remove  .claude/skills/commit/SKILL.md");
+    assert.ok(!output.includes("add  rotunda.json"), output);
+    assertNoApplyDetailLines(output);
+
+    const manifest = JSON.parse(readFileSync(join(DOTFILES, "rotunda.json"), "utf-8")) as {
+      roots: Array<{ include: string[] }>;
+    };
+    assert.deepEqual(manifest.roots[0].include, ["CLAUDE.md"]);
   });
 
   it("removes the whole root when given the root directory path", () => {
@@ -289,6 +385,13 @@ describe("rotunda remove", () => {
     const output = runCli(["remove", LOCAL_CLAUDE], DOTFILES, "y\n");
 
     assert.ok(output.includes("Proceed with remove?"), output);
+    assertPreviewLine(output, "remove root");
+    assertPreviewLine(output, "claude");
+    assertPreviewLine(output, "local  " + LOCAL_CLAUDE);
+    assertPreviewLine(output, "repo   .claude");
+    assertPreviewLine(output, "update  rotunda.json");
+    assert.ok(!output.includes("add  rotunda.json"), output);
+    assertNoApplyDetailLines(output);
     const manifest = JSON.parse(readFileSync(join(DOTFILES, "rotunda.json"), "utf-8")) as {
       roots: unknown[];
     };

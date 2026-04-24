@@ -1,4 +1,6 @@
 import chalk from "chalk";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { loadRepoContext } from "../core/repo-context.js";
 import { loadManifestDocument, RotundaError } from "../core/manifest.js";
@@ -77,7 +79,27 @@ async function promptForRootName(
   }
 }
 
-function renderPreview(plan: TrackingPlan): void {
+function renderExistingRootTarget(plan: TrackingPlan): void {
+  console.log(`    ${chalk.dim("root")}   ${plan.rootName}`);
+  console.log(`    ${chalk.dim("local")}  ${plan.rootManifestLocal}`);
+  console.log(`    ${chalk.dim("repo")}   ${plan.rootRepo}`);
+}
+
+function classifyGitPathPreview(plan: TrackingPlan, cwd: string, gitPath: string): "add" | "update" | "remove" {
+  const removedGitPaths = new Set(plan.repoDeletes.map((entry) => entry.repoPath.replace(/\\/g, "/")));
+  if (removedGitPaths.has(gitPath)) {
+    return "remove";
+  }
+
+  const repoCopy = plan.repoCopies.find((entry) => entry.repoPath.replace(/\\/g, "/") === gitPath);
+  if (repoCopy) {
+    return repoCopy.status === "create" ? "add" : "update";
+  }
+
+  return existsSync(join(cwd, gitPath)) ? "update" : "add";
+}
+
+function renderPreview(plan: TrackingPlan, cwd: string): void {
   console.log(chalk.bold(`\n  rotunda ${plan.kind} ${plan.target.absolutePath}\n`));
 
   console.log(chalk.bold("  rotunda.json:"));
@@ -89,12 +111,15 @@ function renderPreview(plan: TrackingPlan): void {
       console.log(`    ${chalk.dim("include +")} ${plan.manifestMutation.pattern}`);
       break;
     case "add-include":
+      renderExistingRootTarget(plan);
       console.log(`    ${chalk.green("include +")}  ${plan.manifestMutation.pattern}`);
       break;
     case "remove-include":
+      renderExistingRootTarget(plan);
       console.log(`    ${chalk.red("include -")}  ${plan.manifestMutation.pattern}`);
       break;
     case "add-exclude":
+      renderExistingRootTarget(plan);
       console.log(`    ${chalk.red("exclude +")}  ${plan.manifestMutation.pattern}`);
       break;
     case "remove-root":
@@ -113,9 +138,13 @@ function renderPreview(plan: TrackingPlan): void {
 
   console.log(chalk.bold("\n  Dotfiles repo changes:"));
   console.log(`    ${chalk.cyan("commit")}  ${plan.commitMessage}`);
-  const removedGitPaths = new Set(plan.repoDeletes.map((entry) => entry.repoPath.replace(/\\/g, "/")));
   for (const gitPath of plan.gitPaths.map((path) => path.replace(/\\/g, "/"))) {
-    const verb = removedGitPaths.has(gitPath) ? chalk.red("remove") : chalk.cyan("add");
+    const action = classifyGitPathPreview(plan, cwd, gitPath);
+    const verb = action === "remove"
+      ? chalk.red("remove")
+      : action === "update"
+      ? chalk.yellow("update")
+      : chalk.cyan("add");
     console.log(`    ${verb}  ${gitPath}`);
   }
 }
@@ -165,7 +194,7 @@ export async function runIncludeLifecycleCommand(
           newRootName,
         );
 
-        renderPreview(plan);
+        renderPreview(plan, cwd);
         console.log();
 
         const ok = await confirm(promptSession, `  Proceed with ${kind}? [y/N] `);
@@ -177,9 +206,6 @@ export async function runIncludeLifecycleCommand(
         const result = await applyTrackingPlan(cwd, plan, state);
         console.log();
         console.log(chalk.green("  ✓") + " Updated rotunda.json");
-        for (const line of result.log.slice(1)) {
-          console.log(`  ${line}`);
-        }
 
         if (result.gitPaths.length > 0 && await isGitRepo(cwd)) {
           try {
