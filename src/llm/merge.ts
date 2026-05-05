@@ -95,7 +95,9 @@ function interpretError(err: unknown): MergeResult {
 export function stripFences(s: string): string {
   const trimmed = s.trim();
   const m = trimmed.match(/^```[a-zA-Z0-9_+\-.]*\n([\s\S]*?)\n```$/);
-  if (m) return m[1];
+  if (m) {
+    return m[1];
+  }
   return trimmed;
 }
 

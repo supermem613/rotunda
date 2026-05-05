@@ -140,13 +140,19 @@ function relativePattern(rootLocal: string, targetPath: string): string {
 
 function inferPattern(rootLocal: string, target: TrackingTarget): string {
   const rel = relativePattern(rootLocal, target.absolutePath);
-  if (target.kind === "file") return rel;
+  if (target.kind === "file") {
+    return rel;
+  }
   return rel === "" ? "**" : `${rel}/**`;
 }
 
 function isWithinTarget(relativePath: string, targetRel: string, targetKind: TrackingTarget["kind"]): boolean {
-  if (targetRel === "") return true;
-  if (targetKind === "file") return relativePath === targetRel;
+  if (targetRel === "") {
+    return true;
+  }
+  if (targetKind === "file") {
+    return relativePath === targetRel;
+  }
   return relativePath === targetRel || relativePath.startsWith(targetRel + "/");
 }
 
@@ -286,7 +292,9 @@ export function findMatchingRootForTarget(
     .filter((root) => isPathWithin(root.local, targetAbsolutePath))
     .sort((a, b) => normalizeFsPath(b.local).length - normalizeFsPath(a.local).length);
 
-  if (matches.length === 0) return undefined;
+  if (matches.length === 0) {
+    return undefined;
+  }
 
   const best = matches[0];
   if (matches.length > 1 && normalizeFsPath(matches[1].local) === normalizeFsPath(best.local)) {
@@ -313,8 +321,8 @@ export async function planTrackingPathChange(
   const match = findMatchingRootForTarget(manifest, manifestDocument, target.absolutePath);
   const nextManifest = structuredClone(manifestDocument);
 
-  let beforeRawRoot = match?.rawRoot;
-  let beforeRuntimeRoot = match?.runtimeRoot;
+  const beforeRawRoot = match?.rawRoot;
+  const beforeRuntimeRoot = match?.runtimeRoot;
   let afterRuntimeRoot: SyncRoot | undefined;
   let rootName: string;
   let rootRepo: string;
@@ -456,19 +464,6 @@ export async function planTrackingPathChange(
       state,
       beforeRuntimeRoot.include,
       beforeRuntimeRoot.exclude,
-      manifest.globalExclude,
-      targetRel,
-      target.kind,
-    )
-    : [];
-  const afterManagedTargetPaths = afterRuntimeRoot
-    ? collectManagedPaths(
-      rootRepo,
-      afterLocalFiles,
-      afterRepoFiles,
-      state,
-      afterRuntimeRoot.include,
-      afterRuntimeRoot.exclude,
       manifest.globalExclude,
       targetRel,
       target.kind,

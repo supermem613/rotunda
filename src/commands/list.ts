@@ -73,8 +73,11 @@ export async function listCommand(options: { local?: boolean; repo?: boolean }):
 
         // Add side labels when filtering or when not on both sides
         let suffix = "";
-        if (!f.inLocal && !options.repo) suffix = chalk.blue(" (repo only)");
-        else if (!f.inRepo && !options.local) suffix = chalk.yellow(" (local only)");
+        if (!f.inLocal && !options.repo) {
+          suffix = chalk.blue(" (repo only)");
+        } else if (!f.inRepo && !options.local) {
+          suffix = chalk.yellow(" (local only)");
+        }
 
         console.log(`  │    ${indicator} ${name}${suffix}`);
       }
@@ -88,9 +91,15 @@ export async function listCommand(options: { local?: boolean; repo?: boolean }):
     const repoOnly = repoCount - bothCount;
 
     const countParts: string[] = [];
-    if (bothCount) countParts.push(chalk.green(`${bothCount} synced`));
-    if (localOnly) countParts.push(chalk.yellow(`${localOnly} local-only`));
-    if (repoOnly) countParts.push(chalk.blue(`${repoOnly} repo-only`));
+    if (bothCount) {
+      countParts.push(chalk.green(`${bothCount} synced`));
+    }
+    if (localOnly) {
+      countParts.push(chalk.yellow(`${localOnly} local-only`));
+    }
+    if (repoOnly) {
+      countParts.push(chalk.blue(`${repoOnly} repo-only`));
+    }
 
     console.log(chalk.dim(`  │`));
     console.log(chalk.cyan(`  └─ ${sorted.length} files: ${countParts.join(", ")}`));

@@ -115,7 +115,9 @@ describe("truncateToTokenBudget", () => {
     const resultLines = result.split("\n");
     // All lines except the marker should be complete original lines
     for (const line of resultLines.slice(0, -1)) {
-      if (line.startsWith("...")) continue;
+      if (line.startsWith("...")) {
+        continue;
+      }
       assert.ok(
         lines.includes(line),
         `"${line}" should be a complete original line`,

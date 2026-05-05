@@ -77,7 +77,9 @@ export async function syncCommand(options: { yes?: boolean }): Promise<void> {
     }
 
     const exec = await executeApply(plan, manifest, cwd, state);
-    for (const line of exec.log) console.log("  " + line);
+    for (const line of exec.log) {
+      console.log("  " + line);
+    }
 
     await saveState(cwd, exec.state);
 

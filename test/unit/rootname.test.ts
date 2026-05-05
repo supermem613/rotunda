@@ -8,7 +8,6 @@ import { tmpdir } from "node:os";
 import { loadManifest } from "../../src/core/manifest.js";
 import { emptyState, updateStateFiles } from "../../src/core/state.js";
 import { computeAllChanges, computeChanges, discoverFiles, hashFiles } from "../../src/core/engine.js";
-import type { Manifest } from "../../src/core/types.js";
 
 const TMP = join(tmpdir(), "rotunda-rootname-test");
 const REPO = join(TMP, "repo");

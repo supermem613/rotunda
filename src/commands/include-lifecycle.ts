@@ -143,8 +143,8 @@ function renderPreview(plan: TrackingPlan, cwd: string): void {
     const verb = action === "remove"
       ? chalk.red("remove")
       : action === "update"
-      ? chalk.yellow("update")
-      : chalk.cyan("add");
+        ? chalk.yellow("update")
+        : chalk.cyan("add");
     console.log(`    ${verb}  ${gitPath}`);
   }
 }

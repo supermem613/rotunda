@@ -3,7 +3,6 @@ import { join, relative } from "node:path";
 import type {
   FileChange,
   Manifest,
-  SyncRoot,
   SyncState,
 } from "./types.js";
 import { hashFile } from "../utils/hash.js";
@@ -33,7 +32,7 @@ export async function discoverFiles(
 
   function buildDiscoveryPlan(): Array<
     { kind: "walk"; path: string } | { kind: "file"; path: string; relativePath: string }
-  > {
+    > {
     if (include.length === 0) {
       return [{ kind: "walk", path: rootDir }];
     }
@@ -52,7 +51,9 @@ export async function discoverFiles(
       const segments = pattern.split("/").filter((segment) => segment.length > 0);
       const staticSegments: string[] = [];
       for (const segment of segments) {
-        if (segment === "**" || hasGlobMagic(segment)) break;
+        if (segment === "**" || hasGlobMagic(segment)) {
+          break;
+        }
         staticSegments.push(segment);
       }
 

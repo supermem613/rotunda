@@ -48,7 +48,9 @@ export type ManifestDocument = z.infer<typeof ManifestSchema>;
 
 // ── Path helpers ─────────────────────────────────────────────────────
 function resolveTilde(p: string): string {
-  if (p === "~") return homedir();
+  if (p === "~") {
+    return homedir();
+  }
   if (p.startsWith("~/") || p.startsWith("~\\")) {
     return join(homedir(), p.slice(2));
   }

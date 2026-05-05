@@ -8,7 +8,7 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import {
-  mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, mkdtempSync,
+  mkdirSync, writeFileSync, rmSync, existsSync, mkdtempSync,
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -95,7 +95,9 @@ function setupRotundaRepo(): void {
 }
 
 function cleanup(): void {
-  if (TMP) rmSync(TMP, { recursive: true, force: true });
+  if (TMP) {
+    rmSync(TMP, { recursive: true, force: true });
+  }
 }
 
 function freshTmp(): void {

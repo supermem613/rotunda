@@ -44,10 +44,16 @@ export function planApply(rows: Row[]): ApplyPlan {
   let gitTouches = 0;
   let localTouches = 0;
   for (const row of rows) {
-    if (row.action === "skip" || row.action === "conflict") continue;
+    if (row.action === "skip" || row.action === "conflict") {
+      continue;
+    }
     ops.push({ row, kind: row.action });
-    if (touchesGit(row.action)) gitTouches++;
-    if (touchesLocal(row.action)) localTouches++;
+    if (touchesGit(row.action)) {
+      gitTouches++;
+    }
+    if (touchesLocal(row.action)) {
+      localTouches++;
+    }
   }
   return { ops, gitTouches, localTouches };
 }

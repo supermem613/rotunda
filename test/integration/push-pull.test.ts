@@ -1,14 +1,14 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import {
-  mkdirSync, writeFileSync, readFileSync, rmSync, existsSync,
+  mkdirSync, writeFileSync, rmSync,
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { loadManifest } from "../../src/core/manifest.js";
 import { loadState, saveState, emptyState } from "../../src/core/state.js";
 import { computeAllChanges, discoverFiles, hashFiles } from "../../src/core/engine.js";
-import { updateStateFiles, removeFromState } from "../../src/core/state.js";
+import { updateStateFiles } from "../../src/core/state.js";
 
 const TMP = join(tmpdir(), "rotunda-pushpull-test");
 const REPO = join(TMP, "repo");
@@ -148,7 +148,7 @@ describe("Integration: conflict detection", () => {
     const manifest = loadManifest(REPO);
 
     // State has the original version
-    let state = emptyState();
+    const state = emptyState();
     state.files[".claude/skills/commit/SKILL.md"] = {
       hash: "original-hash-different-from-both",
       size: 0,

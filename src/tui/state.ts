@@ -125,14 +125,24 @@ export interface Key {
  * a heuristic shift in defaults.
  */
 export function defaultAction(change: FileChange): ResolvedAction {
-  if (change.action === "conflict") return "conflict";
+  if (change.action === "conflict") {
+    return "conflict";
+  }
   if (change.side === "local") {
-    if (change.action === "added" || change.action === "modified") return "push";
-    if (change.action === "deleted") return "delete-repo";
+    if (change.action === "added" || change.action === "modified") {
+      return "push";
+    }
+    if (change.action === "deleted") {
+      return "delete-repo";
+    }
   }
   if (change.side === "repo") {
-    if (change.action === "added" || change.action === "modified") return "pull";
-    if (change.action === "deleted") return "delete-local";
+    if (change.action === "added" || change.action === "modified") {
+      return "pull";
+    }
+    if (change.action === "deleted") {
+      return "delete-local";
+    }
   }
   // 'both' with non-conflict action shouldn't reach here (engine collapses
   // identical-content additions). Treat as skip if it does.
@@ -182,10 +192,14 @@ export function visibleIndices(state: AppState): number[] {
   const f = state.filter.toLowerCase();
   for (let i = 0; i < state.rows.length; i++) {
     const r = state.rows[i];
-    if (state.conflictsOnly && r.action !== "conflict") continue;
+    if (state.conflictsOnly && r.action !== "conflict") {
+      continue;
+    }
     if (f) {
       const hay = `${r.change.rootName}/${r.change.relativePath}`.toLowerCase();
-      if (!hay.includes(f)) continue;
+      if (!hay.includes(f)) {
+        continue;
+      }
     }
     out.push(i);
   }
@@ -203,7 +217,9 @@ export function actionCounts(state: AppState): Record<ResolvedAction, number> {
     push: 0, pull: 0, "delete-local": 0, "delete-repo": 0,
     "keep-local": 0, "keep-repo": 0, merge: 0, defer: 0, skip: 0, conflict: 0,
   };
-  for (const r of state.rows) counts[r.action]++;
+  for (const r of state.rows) {
+    counts[r.action]++;
+  }
   return counts;
 }
 
@@ -300,7 +316,9 @@ function reduceList(state: AppState, key: Key): AppState {
   }
   // Translate cursor (which is an index into rows[]) to a position in visible[].
   let pos = visible.indexOf(state.cursor);
-  if (pos < 0) pos = 0;
+  if (pos < 0) {
+    pos = 0;
+  }
 
   switch (key.name) {
     case "up":
@@ -456,12 +474,16 @@ export function actionCycle(change: FileChange): ResolvedAction[] {
     return ["keep-repo", "keep-local", "skip"];
   }
   if (change.side === "local") {
-    if (change.action === "deleted") return ["delete-repo", "skip"];
+    if (change.action === "deleted") {
+      return ["delete-repo", "skip"];
+    }
     // local-only / locally-modified: push (default), delete the local file, or skip.
     return ["push", "delete-local", "skip"];
   }
   if (change.side === "repo") {
-    if (change.action === "deleted") return ["delete-local", "skip"];
+    if (change.action === "deleted") {
+      return ["delete-local", "skip"];
+    }
     // repo-only / repo-modified: pull (default), delete the repo file, or skip.
     return ["pull", "delete-repo", "skip"];
   }
@@ -470,7 +492,9 @@ export function actionCycle(change: FileChange): ResolvedAction[] {
 
 function cycleAction(state: AppState, rowIndex: number, dir: 1 | -1): AppState {
   const row = state.rows[rowIndex];
-  if (!row) return state;
+  if (!row) {
+    return state;
+  }
   const cycle = actionCycle(row.change);
   // If the row is currently in a non-cycle action (merge / defer / merge-error
   // conflict), entering the cycle starts at the natural pick for that side.
@@ -484,7 +508,9 @@ function cycleAction(state: AppState, rowIndex: number, dir: 1 | -1): AppState {
 
 function setRowAction(state: AppState, rowIndex: number, action: ResolvedAction): AppState {
   const row = state.rows[rowIndex];
-  if (!row) return state;
+  if (!row) {
+    return state;
+  }
   // Setting any action other than 'merge' invalidates a stale mergedContent.
   const cleaned: Row = action === "merge"
     ? { ...row, action }
@@ -496,7 +522,9 @@ function setRowAction(state: AppState, rowIndex: number, action: ResolvedAction)
 
 function requestMerge(state: AppState, rowIndex: number): AppState {
   const row = state.rows[rowIndex];
-  if (!row || row.change.action !== "conflict") return state;
+  if (!row || row.change.action !== "conflict") {
+    return state;
+  }
   // The screen layer is responsible for actually invoking the LLM and
   // dispatching merge-success / merge-failure events. We just signal here.
   return { ...state, message: `__merge__:${rowIndex}` };
@@ -530,14 +558,18 @@ function bulkActionFor(r: Row, winner: "repo" | "local"): ResolvedAction {
       return winner === "repo" ? "pull" : "delete-repo";
     }
     // local-only / locally-modified: local-wins pushes; repo-wins reverts local to repo (or skip if no repo file).
-    if (winner === "local") return "push";
+    if (winner === "local") {
+      return "push";
+    }
     return c.repoHash !== undefined ? "pull" : "delete-local";
   }
   if (c.side === "repo") {
     if (c.action === "deleted") {
       return winner === "repo" ? "delete-local" : "push";
     }
-    if (winner === "repo") return "pull";
+    if (winner === "repo") {
+      return "pull";
+    }
     return c.localHash !== undefined ? "push" : "delete-repo";
   }
   return "skip";
@@ -606,8 +638,12 @@ function clampScroll(state: AppState): AppState {
   const cursorPos = Math.max(0, visible.indexOf(state.cursor));
   const page = listPageSize(state);
   let scroll = state.listScroll;
-  if (cursorPos < scroll) scroll = cursorPos;
-  if (cursorPos >= scroll + page) scroll = cursorPos - page + 1;
+  if (cursorPos < scroll) {
+    scroll = cursorPos;
+  }
+  if (cursorPos >= scroll + page) {
+    scroll = cursorPos - page + 1;
+  }
   scroll = Math.max(0, Math.min(scroll, Math.max(0, visible.length - page)));
   return { ...state, listScroll: scroll };
 }

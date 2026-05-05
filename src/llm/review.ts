@@ -50,7 +50,9 @@ export async function reviewChanges(
   for (let i = 0; i < changes.length; i++) {
     const change = changes[i];
     const rootDef = manifest.roots.find((r) => r.repo === change.rootName);
-    if (!rootDef) continue;
+    if (!rootDef) {
+      continue;
+    }
 
     const localFile = join(rootDef.local, change.relativePath);
     const repoFile = join(repoPath, rootDef.repo, change.relativePath);
@@ -72,9 +74,9 @@ export async function reviewChanges(
     // Header
     const actionColor =
       change.action === "added" ? chalk.green :
-      change.action === "deleted" ? chalk.red :
-      change.action === "conflict" ? chalk.magenta :
-      chalk.yellow;
+        change.action === "deleted" ? chalk.red :
+          change.action === "conflict" ? chalk.magenta :
+            chalk.yellow;
 
     console.log(
       chalk.bold(`\n  ── ${i + 1}/${changes.length}: ${change.rootName}/${change.relativePath} `) +
@@ -91,7 +93,7 @@ export async function reviewChanges(
       for (const line of explanation.split("\n")) {
         console.log(`  ${line}`);
       }
-    } catch (err) {
+    } catch {
       console.log(chalk.yellow("  ⚠ Could not get LLM explanation. Showing raw diff."));
       if (diff) {
         console.log(chalk.dim(diff.split("\n").map((l) => `  ${l}`).join("\n")));
@@ -104,8 +106,8 @@ export async function reviewChanges(
       for (const line of diff.split("\n").slice(0, 30)) {
         const colored = line.startsWith("+") ? chalk.green(`    ${line}`) :
           line.startsWith("-") ? chalk.red(`    ${line}`) :
-          line.startsWith("@@") ? chalk.cyan(`    ${line}`) :
-          chalk.dim(`    ${line}`);
+            line.startsWith("@@") ? chalk.cyan(`    ${line}`) :
+              chalk.dim(`    ${line}`);
         console.log(colored);
       }
       if (diff.split("\n").length > 30) {
@@ -133,7 +135,7 @@ export async function reviewChanges(
       results.push({ change, decision });
       const icon = decision === "approve" ? chalk.green("✓ Approved") :
         decision === "reject" ? chalk.red("✗ Rejected") :
-        chalk.dim("⊘ Skipped");
+          chalk.dim("⊘ Skipped");
       console.log(`  ${icon}`);
     }
   }
@@ -222,7 +224,9 @@ async function reshapeLoop(
     } catch (err) {
       console.log(chalk.red(`  ⚠ Reshape failed: ${err}`));
       const retry = await prompt("  [r]etry or [c]ancel? > ");
-      if (retry.toLowerCase() === "c") return null;
+      if (retry.toLowerCase() === "c") {
+        return null;
+      }
     }
   }
 }

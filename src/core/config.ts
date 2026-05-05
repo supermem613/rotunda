@@ -194,7 +194,9 @@ function canInvoke(cmd: string): boolean {
  */
 function detectParentShell(): string | null {
   const ppid = process.ppid;
-  if (!ppid) return null;
+  if (!ppid) {
+    return null;
+  }
 
   try {
     if (process.platform === "win32") {
@@ -203,18 +205,23 @@ function detectParentShell(): string | null {
         ["/FI", `PID eq ${ppid}`, "/FO", "CSV", "/NH"],
         { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
       );
-      if (result.status !== 0 || !result.stdout) return null;
+      if (result.status !== 0 || !result.stdout) {
+        return null;
+      }
       // CSV: "name.exe","pid",...
       const match = result.stdout.match(/^"([^"]+)"/);
-      if (!match) return null;
+      if (!match) {
+        return null;
+      }
       return match[1].replace(/\.exe$/i, "").toLowerCase();
     }
 
     // Unix: try /proc first (fast, no subprocess), fall back to ps.
     try {
-      const fs = require("node:fs") as typeof import("node:fs");
-      const comm = fs.readFileSync(`/proc/${ppid}/comm`, "utf8").trim();
-      if (comm) return comm.toLowerCase();
+      const comm = readFileSync(`/proc/${ppid}/comm`, "utf8").trim();
+      if (comm) {
+        return comm.toLowerCase();
+      }
     } catch {
       // /proc not available (macOS, BSD); use ps.
     }
@@ -222,7 +229,9 @@ function detectParentShell(): string | null {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     });
-    if (result.status !== 0 || !result.stdout) return null;
+    if (result.status !== 0 || !result.stdout) {
+      return null;
+    }
     // ps may print full path; take basename.
     const name = result.stdout.trim().split(/[\\/]/).pop();
     return name ? name.toLowerCase() : null;
@@ -287,8 +296,12 @@ export function pickShell(cdShell: string | null = null): ShellChoice {
   }
 
   if (process.platform === "win32") {
-    if (canInvoke("pwsh")) return { cmd: "pwsh", args: ["-NoLogo"] };
-    if (canInvoke("powershell")) return { cmd: "powershell", args: ["-NoLogo"] };
+    if (canInvoke("pwsh")) {
+      return { cmd: "pwsh", args: ["-NoLogo"] };
+    }
+    if (canInvoke("powershell")) {
+      return { cmd: "powershell", args: ["-NoLogo"] };
+    }
     return { cmd: process.env.ComSpec || "cmd.exe", args: [] };
   }
 

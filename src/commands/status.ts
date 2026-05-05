@@ -57,10 +57,18 @@ export async function statusCommand(): Promise<void> {
   }
 
   const parts: string[] = [];
-  if (counts.added) parts.push(chalk.green(`${counts.added} added`));
-  if (counts.modified) parts.push(chalk.yellow(`${counts.modified} modified`));
-  if (counts.deleted) parts.push(chalk.red(`${counts.deleted} deleted`));
-  if (counts.conflict) parts.push(chalk.magenta(`${counts.conflict} conflict(s)`));
+  if (counts.added) {
+    parts.push(chalk.green(`${counts.added} added`));
+  }
+  if (counts.modified) {
+    parts.push(chalk.yellow(`${counts.modified} modified`));
+  }
+  if (counts.deleted) {
+    parts.push(chalk.red(`${counts.deleted} deleted`));
+  }
+  if (counts.conflict) {
+    parts.push(chalk.magenta(`${counts.conflict} conflict(s)`));
+  }
 
   console.log(`  Summary: ${parts.join(", ")}`);
 }

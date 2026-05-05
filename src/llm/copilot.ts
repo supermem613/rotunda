@@ -102,7 +102,9 @@ export async function chatCompletion(
       };
     })();
 
-    if (!timeoutMs) return operation;
+    if (!timeoutMs) {
+      return operation;
+    }
 
     const timeoutPromise = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
@@ -114,11 +116,13 @@ export async function chatCompletion(
     return await Promise.race([operation, timeoutPromise]);
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError" && timeoutMs) {
-      throw new Error(`Copilot API timeout after ${timeoutMs}ms`);
+      throw new Error(`Copilot API timeout after ${timeoutMs}ms`, { cause: error });
     }
     throw error;
   } finally {
-    if (timer) clearTimeout(timer);
+    if (timer) {
+      clearTimeout(timer);
+    }
   }
 }
 

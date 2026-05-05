@@ -37,10 +37,14 @@ export function normalizeKey(
   let name = raw?.name ?? str ?? "";
   // readline reports ENTER as 'return' on macOS/Linux but the user thinks
   // ENTER. Normalise to 'enter' so reducers only check one symbol.
-  if (name === "return") name = "enter";
+  if (name === "return") {
+    name = "enter";
+  }
   // Space comes through as str=' ', name='space' on most platforms but on
   // some Windows builds str=' ', name=undefined. Treat both as 'space'.
-  if (!raw?.name && str === " ") name = "space";
+  if (!raw?.name && str === " ") {
+    name = "space";
+  }
   // ESC: on most terminals readline sets raw.name='escape' after its
   // ~500 ms escape-sequence timeout. On some Windows ConPTY paths the
   // bare ESC arrives as str='\x1b' with raw.name undefined — normalise.
@@ -73,13 +77,17 @@ export function subscribeKeys(
   const fastEscape = attachFastEscape(input, onKey);
 
   readline.emitKeypressEvents(input);
-  if (input.isTTY) input.setRawMode(true);
+  if (input.isTTY) {
+    input.setRawMode(true);
+  }
 
   const handler = (str: string | undefined, raw: readline.Key | undefined): void => {
     const key = normalizeKey(str, raw);
     // Dedupe: if the fast path already emitted this escape, swallow the
     // delayed one that readline's 500 ms timer produces.
-    if (key.name === "escape" && fastEscape.consumeIfRecent()) return;
+    if (key.name === "escape" && fastEscape.consumeIfRecent()) {
+      return;
+    }
     onKey(key);
   };
   input.on("keypress", handler);
@@ -88,12 +96,16 @@ export function subscribeKeys(
     input.off("keypress", handler);
     fastEscape.detach();
     if (input.isTTY) {
-      try { input.setRawMode(false); } catch { /* may already be torn down */ }
+      try {
+        input.setRawMode(false); 
+      } catch { /* may already be torn down */ }
     }
     // emitKeypressEvents puts stdin into flowing mode; pause it so the
     // event loop can exit after the TUI returns. Without this the process
     // hangs on Windows after a clean quit.
-    try { input.pause(); } catch { /* ignore */ }
+    try {
+      input.pause(); 
+    } catch { /* ignore */ }
   };
 }
 
@@ -127,7 +139,9 @@ export function attachFastEscape(
     // a short timer — if more bytes arrive first, we cancel; otherwise
     // we commit to "it was the ESC key" and dispatch immediately.
     if (buf.length === 1 && buf[0] === 0x1b) {
-      if (timer) clearTimeout(timer);
+      if (timer) {
+        clearTimeout(timer);
+      }
       timer = setTimeout(() => {
         timer = null;
         lastFastEmitAt = Date.now();
@@ -155,9 +169,13 @@ export function attachFastEscape(
       }
     },
     consumeIfRecent(): boolean {
-      if (lastFastEmitAt === 0) return false;
+      if (lastFastEmitAt === 0) {
+        return false;
+      }
       const fresh = Date.now() - lastFastEmitAt < ESCAPE_DEDUPE_MS;
-      if (fresh) lastFastEmitAt = 0;
+      if (fresh) {
+        lastFastEmitAt = 0;
+      }
       return fresh;
     },
   };

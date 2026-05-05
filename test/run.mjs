@@ -10,7 +10,7 @@
 // local state can silently mask a regression that only surfaces in CI.
 import { readdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, posix } from "node:path";
+import { join } from "node:path";
 import { minimatch } from "minimatch";
 import { execSync } from "node:child_process";
 
@@ -73,7 +73,9 @@ try {
     totalTests += tests;
     totalPass += pass;
     totalFail += fail;
-    if (fileFailed && fail === 0) totalFail += 1;
+    if (fileFailed && fail === 0) {
+      totalFail += 1;
+    }
   }
   console.log(`\n# AGGREGATE: tests ${totalTests} | pass ${totalPass} | fail ${totalFail}`);
   if (failedFiles.length) {

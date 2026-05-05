@@ -54,8 +54,16 @@ function setup() {
 }
 
 function cleanup() {
-  if (savedHome === undefined) delete process.env.HOME; else process.env.HOME = savedHome;
-  if (savedUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = savedUserProfile;
+  if (savedHome === undefined) {
+    delete process.env.HOME;
+  } else {
+    process.env.HOME = savedHome;
+  }
+  if (savedUserProfile === undefined) {
+    delete process.env.USERPROFILE;
+  } else {
+    process.env.USERPROFILE = savedUserProfile;
+  }
   rmSync(TMP, { recursive: true, force: true });
 }
 
@@ -80,7 +88,7 @@ describe("Bug repro: pull should restore locally-deleted dir from repo", () => {
       manifest.globalExclude,
     );
     const repoHashes = await hashFiles(repoFiles);
-    let state = updateStateFiles(emptyState(), ".claude", repoHashes);
+    const state = updateStateFiles(emptyState(), ".claude", repoHashes);
 
     // Now user removes the dir locally
     rmSync(join(LOCAL, ".claude", "skills", "commit"), { recursive: true, force: true });

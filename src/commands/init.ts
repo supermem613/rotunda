@@ -173,7 +173,7 @@ export async function initCommand(): Promise<void> {
     if (repoCount > totalFiles) {
       console.log(chalk.dim(`  Run \`rotunda pull\` to pull ${repoCount - totalFiles} repo-only file(s) to local.`));
     }
-  } catch (err) {
+  } catch {
     console.log(
       chalk.yellow("⚠") +
         " Could not scan files (run rotunda init again after setting up roots)"

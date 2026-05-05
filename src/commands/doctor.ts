@@ -1,4 +1,4 @@
-import { access, readFile, readdir, constants, writeFile, rm, mkdir, copyFile } from "node:fs/promises";
+import { access, readFile, readdir, constants, writeFile, rm, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, normalize, dirname } from "node:path";
 import { createInterface } from "node:readline";
@@ -7,10 +7,8 @@ import { loadManifest, RotundaError } from "../core/manifest.js";
 import {
   loadGlobalConfig,
   getGlobalConfigPath,
-  resolveRepoRoot,
 } from "../core/config.js";
-import { loadState, saveState, getStatePath, removeFromState } from "../core/state.js";
-import { discoverFiles } from "../core/engine.js";
+import { loadState, saveState, getStatePath } from "../core/state.js";
 import { isGitRepo, gitStatus, isPathIgnored } from "../utils/git.js";
 import { shouldInclude } from "../utils/glob.js";
 import { loadToken } from "../llm/auth.js";
@@ -134,7 +132,9 @@ async function checkOrphans(manifest: Manifest): Promise<DoctorCheck> {
       // File passes include filters — it's tracked. Not an orphan.
     }
     // Orphans are files that exist but are NOT matched by include patterns
-    if (root.include.length === 0) continue; // no include filter means everything is tracked
+    if (root.include.length === 0) {
+      continue;
+    } // no include filter means everything is tracked
     for (const relPath of entries) {
       if (shouldInclude(relPath, root.include, root.exclude, manifest.globalExclude)) {
         continue; // tracked
@@ -226,7 +226,9 @@ async function checkIgnoreCoverage(manifest: Manifest, repoPath: string): Promis
   const issues: string[] = [];
   for (const root of manifest.roots) {
     const allExcludes = [...root.exclude, ...manifest.globalExclude];
-    if (allExcludes.length === 0) continue;
+    if (allExcludes.length === 0) {
+      continue;
+    }
 
     // Check repo side
     const repoDir = join(repoPath, root.repo);
@@ -417,32 +419,42 @@ interface FixAction {
 async function applyFix(action: FixAction, repoPath: string, state: SyncState | undefined): Promise<boolean> {
   switch (action.type) {
     case "create_dir":
-      if (!action.path) return false;
+      if (!action.path) {
+        return false;
+      }
       await mkdir(action.path, { recursive: true });
       console.log(chalk.green("    ✓") + ` Created directory: ${action.path}`);
       return true;
 
     case "delete_file":
-      if (!action.path) return false;
+      if (!action.path) {
+        return false;
+      }
       await rm(action.path, { force: true });
       console.log(chalk.green("    ✓") + ` Deleted file: ${action.path}`);
       return true;
 
     case "delete_dir":
-      if (!action.path) return false;
+      if (!action.path) {
+        return false;
+      }
       await rm(action.path, { recursive: true, force: true });
       console.log(chalk.green("    ✓") + ` Deleted directory: ${action.path}`);
       return true;
 
     case "remove_state_entry":
-      if (!action.key || !state) return false;
+      if (!action.key || !state) {
+        return false;
+      }
       delete state.files[action.key];
       await saveState(repoPath, state);
       console.log(chalk.green("    ✓") + ` Removed state entry: ${action.key}`);
       return true;
 
     case "git_commit":
-      if (!action.paths?.length || !action.message) return false;
+      if (!action.paths?.length || !action.message) {
+        return false;
+      }
       try {
         const { git } = await import("../utils/git.js");
         await git(["add", ...action.paths], repoPath);
@@ -455,7 +467,9 @@ async function applyFix(action: FixAction, repoPath: string, state: SyncState | 
       }
 
     case "write_file":
-      if (!action.path || action.content === undefined) return false;
+      if (!action.path || action.content === undefined) {
+        return false;
+      }
       await mkdir(dirname(action.path), { recursive: true });
       await writeFile(action.path, action.content, "utf-8");
       console.log(chalk.green("    ✓") + ` Wrote file: ${action.path}`);
@@ -580,7 +594,9 @@ export async function doctorCommand(options: { fix?: boolean }): Promise<void> {
   // 0. Binding check first — every other check operates on the bound repo,
   //    so we want to surface a bad binding before anything else fires.
   const bindingResult = checkBinding(cwd);
-  for (const c of bindingResult.checks) checks.push(c);
+  for (const c of bindingResult.checks) {
+    checks.push(c);
+  }
 
   // Use the bound repo if resolvable, otherwise fall back to cwd so the
   // rest of doctor still produces useful output for in-repo runs.
@@ -665,9 +681,15 @@ export async function doctorCommand(options: { fix?: boolean }): Promise<void> {
   const passed = checks.filter((c) => c.status === "pass").length;
 
   const parts: string[] = [];
-  if (errors) parts.push(chalk.red(`${errors} error${errors !== 1 ? "s" : ""}`));
-  if (warnings) parts.push(chalk.yellow(`${warnings} warning${warnings !== 1 ? "s" : ""}`));
-  if (passed) parts.push(chalk.green(`${passed} passed`));
+  if (errors) {
+    parts.push(chalk.red(`${errors} error${errors !== 1 ? "s" : ""}`));
+  }
+  if (warnings) {
+    parts.push(chalk.yellow(`${warnings} warning${warnings !== 1 ? "s" : ""}`));
+  }
+  if (passed) {
+    parts.push(chalk.green(`${passed} passed`));
+  }
 
   console.log(`  Summary: ${parts.join(", ")}`);
   console.log();
@@ -709,14 +731,20 @@ export async function doctorCommand(options: { fix?: boolean }): Promise<void> {
         const fix = fixes[i];
         const typeLabel =
           fix.type === "manual" ? chalk.cyan("MANUAL") :
-          fix.type === "delete_file" || fix.type === "delete_dir" ? chalk.red(fix.type) :
-          chalk.green(fix.type);
+            fix.type === "delete_file" || fix.type === "delete_dir" ? chalk.red(fix.type) :
+              chalk.green(fix.type);
 
         console.log(`  ${chalk.bold(`${i + 1}.`)} ${typeLabel}`);
         console.log(`     ${chalk.dim(fix.reason)}`);
-        if (fix.path) console.log(`     Path: ${fix.path}`);
-        if (fix.key) console.log(`     Key: ${fix.key}`);
-        if (fix.instruction) console.log(`     ${fix.instruction}`);
+        if (fix.path) {
+          console.log(`     Path: ${fix.path}`);
+        }
+        if (fix.key) {
+          console.log(`     Key: ${fix.key}`);
+        }
+        if (fix.instruction) {
+          console.log(`     ${fix.instruction}`);
+        }
 
         if (fix.type === "manual") {
           console.log();

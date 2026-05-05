@@ -107,7 +107,9 @@ describe("reduce / cursor + scroll", () => {
       vp(20, 80), // page = 20 - 6 = 14
     );
     const page = listPageSize(s);
-    for (let i = 0; i < page + 2; i++) s = reduce(s, k("down"));
+    for (let i = 0; i < page + 2; i++) {
+      s = reduce(s, k("down"));
+    }
     assert.ok(s.listScroll > 0, "should have scrolled");
     assert.ok(s.cursor >= s.listScroll && s.cursor < s.listScroll + page);
   });
@@ -378,7 +380,9 @@ describe("resize", () => {
       Array.from({ length: 30 }, (_, i) => fc({ relativePath: `f${i}` })),
       vp(40, 80),
     );
-    for (let i = 0; i < 25; i++) s = reduce(s, k("down"));
+    for (let i = 0; i < 25; i++) {
+      s = reduce(s, k("down"));
+    }
     const beforeScroll = s.listScroll;
     s = reduce(s, { type: "resize", viewport: { cols: 80, rows: 100 } });
     // With a much taller viewport, scroll should pull back toward 0.

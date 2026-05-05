@@ -78,7 +78,7 @@ describe("executeApply", () => {
       relativePath: "c.md", rootName: "claude", action: "deleted", side: "repo",
       stateHash: "h",
     };
-    let s = emptyState();
+    const s = emptyState();
     s.files["claude/c.md"] = { hash: "h", size: 0, syncedAt: "now" };
     const plan = planApply([row("delete-local", change)]);
     const r = await executeApply(plan, manifest(), REPO, s);

@@ -36,7 +36,9 @@ function findRotundaSourceRepo(): string | null {
     if (existsSync(pkgPath)) {
       try {
         const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { name?: string };
-        if (pkg.name === "rotunda") return dir;
+        if (pkg.name === "rotunda") {
+          return dir;
+        }
       } catch {
         // Malformed package.json — ignore and keep walking up.
       }
@@ -87,7 +89,9 @@ export function homeCommand(): void {
   });
 
   child.on("exit", (code, signal) => {
-    if (signal) process.exit(1);
+    if (signal) {
+      process.exit(1);
+    }
     process.exit(code ?? 0);
   });
 }

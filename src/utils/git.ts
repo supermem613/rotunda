@@ -178,7 +178,9 @@ export async function gitDiffFiles(
   color = false
 ): Promise<string> {
   const args = ["diff", "--no-index"];
-  if (color) args.push("--color");
+  if (color) {
+    args.push("--color");
+  }
   args.push("--", file1, file2);
 
   // git diff --no-index doesn't need a repo, cwd doesn't matter

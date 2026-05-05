@@ -6,7 +6,6 @@
  * in ~/.rotunda/auth.json and refreshed automatically when expired.
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -76,7 +75,9 @@ export function clearToken(): void {
 
 export async function loadToken(): Promise<AuthToken | null> {
   const auth = loadAuth();
-  if (!auth?.oauthToken) return null;
+  if (!auth?.oauthToken) {
+    return null;
+  }
 
   // Return cached Copilot token if still valid (with 60s buffer)
   if (
@@ -208,7 +209,9 @@ export async function authenticateWithDeviceFlow(): Promise<AuthToken> {
       return { github_token: copilotToken };
     }
 
-    if (body.error === "authorization_pending") continue;
+    if (body.error === "authorization_pending") {
+      continue;
+    }
     if (body.error === "slow_down") {
       pollInterval += 5000;
       continue;
@@ -224,6 +227,8 @@ export async function authenticateWithDeviceFlow(): Promise<AuthToken> {
 
 export async function ensureAuthenticated(): Promise<AuthToken> {
   const existing = await loadToken();
-  if (existing) return existing;
+  if (existing) {
+    return existing;
+  }
   return authenticateWithDeviceFlow();
 }

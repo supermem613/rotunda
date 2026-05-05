@@ -44,7 +44,9 @@ export async function diffCommand(
   // --stat: summary only
   if (options.stat) {
     const counts = { added: 0, modified: 0, deleted: 0, conflict: 0 };
-    for (const c of changes) counts[c.action]++;
+    for (const c of changes) {
+      counts[c.action]++;
+    }
     console.log(`${changes.length} files changed: ${counts.added} added, ${counts.modified} modified, ${counts.deleted} deleted, ${counts.conflict} conflicts`);
     return;
   }
@@ -53,7 +55,9 @@ export async function diffCommand(
   if (options.open) {
     for (const c of changes) {
       const rootDef = manifest.roots.find((r) => r.repo === c.rootName);
-      if (!rootDef) continue;
+      if (!rootDef) {
+        continue;
+      }
       const localFile = join(rootDef.local, c.relativePath);
       const repoFile = join(cwd, rootDef.repo, c.relativePath);
 
@@ -79,7 +83,9 @@ export async function diffCommand(
     console.log(chalk.bold(`\n── ${rootName} ${"─".repeat(Math.max(0, 55 - rootName.length))}`));
 
     const rootDef = manifest.roots.find((r) => r.repo === rootName);
-    if (!rootDef) continue;
+    if (!rootDef) {
+      continue;
+    }
 
     for (const c of rootChanges) {
       const localFile = join(rootDef.local, c.relativePath);
@@ -92,7 +98,9 @@ export async function diffCommand(
             file1Role: "repo",
             file2Role: "local",
           });
-          if (diff) console.log(diff);
+          if (diff) {
+            console.log(diff);
+          }
         } catch {
           console.log(chalk.dim(`  (could not diff ${c.relativePath})`));
         }

@@ -1,8 +1,8 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, mkdirSync, rmSync, existsSync } from "node:fs";
+import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { saveGlobalConfig, loadGlobalConfig } from "../../src/core/config.js";
 import { whereCommand } from "../../src/commands/where.js";
 
@@ -25,10 +25,16 @@ function setFakeHome(dir: string): void {
 }
 
 function restoreHome(): void {
-  if (ORIG_HOME === undefined) delete process.env.HOME;
-  else process.env.HOME = ORIG_HOME;
-  if (ORIG_USERPROFILE === undefined) delete process.env.USERPROFILE;
-  else process.env.USERPROFILE = ORIG_USERPROFILE;
+  if (ORIG_HOME === undefined) {
+    delete process.env.HOME;
+  } else {
+    process.env.HOME = ORIG_HOME;
+  }
+  if (ORIG_USERPROFILE === undefined) {
+    delete process.env.USERPROFILE;
+  } else {
+    process.env.USERPROFILE = ORIG_USERPROFILE;
+  }
 }
 
 function makeRotundaRepo(dir: string): void {
@@ -160,7 +166,9 @@ describe("bindCommand", () => {
     }) as typeof process.exit;
     try {
       await bindCommand(ghost, {}).catch((e) => {
-        if (e.message !== "__exit__") throw e;
+        if (e.message !== "__exit__") {
+          throw e;
+        }
       });
     } finally {
       process.exit = origExit;
@@ -183,7 +191,9 @@ describe("bindCommand", () => {
     }) as typeof process.exit;
     try {
       await bindCommand(dir, {}).catch((e) => {
-        if (e.message !== "__exit__") throw e;
+        if (e.message !== "__exit__") {
+          throw e;
+        }
       });
     } finally {
       process.exit = origExit;
@@ -246,7 +256,9 @@ describe("whereCommand", () => {
       try {
         whereCommand();
       } catch (e) {
-        if ((e as Error).message !== "__exit__") throw e;
+        if ((e as Error).message !== "__exit__") {
+          throw e;
+        }
       }
     } finally {
       process.exit = origExit;

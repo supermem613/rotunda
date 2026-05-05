@@ -1,6 +1,6 @@
 import { readFile, writeFile, mkdir, rename, access } from "node:fs/promises";
 import { join, dirname } from "node:path";
-import type { SyncState, FileState, DeferredEntry } from "./types.js";
+import type { SyncState, DeferredEntry } from "./types.js";
 
 const STATE_DIR = ".rotunda";
 const STATE_FILE = "state.json";
@@ -168,7 +168,9 @@ export function setDeferred(
  * (e.g. by editing the working file and re-running sync, then picking a side).
  */
 export function clearDeferred(state: SyncState, stateKey: string): SyncState {
-  if (!state.deferred?.[stateKey]) return state;
+  if (!state.deferred?.[stateKey]) {
+    return state;
+  }
   const updated = {
     ...state,
     deferred: { ...state.deferred },

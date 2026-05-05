@@ -72,14 +72,18 @@ function renderList(state: AppState): string {
     lines.push(padRow(centered("(no rows match current filter)", cols), cols));
     // Pad to page height. EOL on every blank line so it overwrites any
     // leftover content from the previous frame at this row.
-    for (let i = 1; i < page; i++) lines.push(EOL);
+    for (let i = 1; i < page; i++) {
+      lines.push(EOL);
+    }
   } else {
     for (let i = start; i < end; i++) {
       const rowIdx = visible[i];
       lines.push(renderRow(state, state.rows[rowIdx], rowIdx === state.cursor, cols));
     }
     // Pad
-    for (let i = end - start; i < page; i++) lines.push(EOL);
+    for (let i = end - start; i < page; i++) {
+      lines.push(EOL);
+    }
   }
 
   lines.push(separator(cols));
@@ -136,7 +140,9 @@ function renderRow(state: AppState, row: Row, isCursor: boolean, cols: number): 
 }
 
 function footerLine(state: AppState, cols: number): string {
-  if (state.view !== "list") return "";
+  if (state.view !== "list") {
+    return "";
+  }
   // Two-line footer: primary actions on top (bold), navigation + bulk + per-row
   // details on the second line (dim). The primary line is what the user needs
   // to know to *finish* the session — apply or quit. Everything else is
@@ -155,9 +161,15 @@ function footerLine(state: AppState, cols: number): string {
  * to render something even before that completes.
  */
 function formatStatusForFooter(msg: string): string {
-  if (msg.startsWith("__merge__:"))  return chalk.cyan("merging…");
-  if (msg.startsWith("__editor__:")) return chalk.cyan("opening editor…");
-  if (msg.startsWith("__defer__:"))  return chalk.cyan("deferring…");
+  if (msg.startsWith("__merge__:"))  {
+    return chalk.cyan("merging…");
+  }
+  if (msg.startsWith("__editor__:")) {
+    return chalk.cyan("opening editor…");
+  }
+  if (msg.startsWith("__defer__:"))  {
+    return chalk.cyan("deferring…");
+  }
   return chalk.yellow(msg);
 }
 
@@ -201,7 +213,9 @@ function renderDiff(state: AppState): string {
       lines.push(padRow(chalk.dim(line), cols));
     }
   }
-  for (let i = end - start; i < page; i++) lines.push(EOL);
+  for (let i = end - start; i < page; i++) {
+    lines.push(EOL);
+  }
 
   lines.push(padRow(
     chalk.dim("ESC/q close · ↑/↓ scroll · PgUp/PgDn page · Home/End jump · ←/→ change action · m merge · e edit · d defer"),
@@ -225,8 +239,12 @@ function renderPreview(state: AppState): string {
   lines.push(EOL);
   lines.push(padRow("  Pending operations:", cols));
   for (const [action, count] of Object.entries(counts) as [keyof typeof counts, number][]) {
-    if (count === 0) continue;
-    if (action === "skip") continue;
+    if (count === 0) {
+      continue;
+    }
+    if (action === "skip") {
+      continue;
+    }
     lines.push(padRow(`    ${colorAction(action)}  ${count}  — ${chalk.dim(actionEffect(action))}`, cols));
   }
   if (counts.skip > 0) {
@@ -247,7 +265,9 @@ function renderPreview(state: AppState): string {
       chalk.bold("[ESC] back to list") + "   " + chalk.dim("[q] quit"), cols));
   }
   // Pad to viewport
-  while (lines.length < state.viewport.rows) lines.push(EOL);
+  while (lines.length < state.viewport.rows) {
+    lines.push(EOL);
+  }
   return lines.join("\n");
 }
 
@@ -261,7 +281,9 @@ function renderFilterInput(state: AppState): string {
   // Render the underlying list dimmed. stripAnsi eats the per-line \x1b[K,
   // so re-pad through padRow to reattach EOL and the width budget.
   const listFrame = renderList({ ...state, view: "list" }).split("\n");
-  for (const l of listFrame) lines.push(padRow(chalk.dim(stripAnsi(l)), cols));
+  for (const l of listFrame) {
+    lines.push(padRow(chalk.dim(stripAnsi(l)), cols));
+  }
   // Overlay an input box near the bottom
   const prompt = "filter> " + state.filterDraft + chalk.inverse(" ");
   // Replace the second-to-last line with the prompt
@@ -282,7 +304,9 @@ function separator(cols: number): string {
 
 function centered(s: string, cols: number): string {
   const visLen = stripAnsi(s).length;
-  if (visLen >= cols - 1) return truncateVisible(s, cols - 1);
+  if (visLen >= cols - 1) {
+    return truncateVisible(s, cols - 1);
+  }
   const pad = Math.floor((cols - 1 - visLen) / 2);
   return " ".repeat(pad) + s;
 }
@@ -308,6 +332,7 @@ function padRow(s: string, cols: number): string {
 
 // CSI sequences (ESC [ … letter) — covers SGR colors (m), clear-to-EOL (K),
 // cursor moves (H/A/B/C/D/J), etc.
+// eslint-disable-next-line no-control-regex
 const ANSI_RE = /\x1b\[[0-9;]*[A-Za-z]/g;
 
 export function stripAnsi(s: string): string {
@@ -327,8 +352,12 @@ function truncateVisible(s: string, max: number): string {
     if (s[i] === "\x1b" && s[i + 1] === "[") {
       // CSI sequence: ESC [ params… final-byte (any letter A–Z, a–z)
       let j = i + 2;
-      while (j < s.length && !/[A-Za-z]/.test(s[j])) j++;
-      if (j >= s.length) break;
+      while (j < s.length && !/[A-Za-z]/.test(s[j])) {
+        j++;
+      }
+      if (j >= s.length) {
+        break;
+      }
       out += s.slice(i, j + 1);
       i = j + 1;
       continue;

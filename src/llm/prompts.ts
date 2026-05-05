@@ -29,7 +29,9 @@ function capFilePayload(
 ): { diff: string; content: string | null } {
   const metaOverhead = 50;
   let remaining = budgetTokens - metaOverhead;
-  if (remaining < 200) remaining = 200;
+  if (remaining < 200) {
+    remaining = 200;
+  }
 
   let cappedDiff = diff;
   let cappedContent = content;

@@ -28,10 +28,16 @@ function setFakeHome(dir: string): void {
   process.env.USERPROFILE = dir;
 }
 function restoreHome(): void {
-  if (ORIG_HOME === undefined) delete process.env.HOME;
-  else process.env.HOME = ORIG_HOME;
-  if (ORIG_USERPROFILE === undefined) delete process.env.USERPROFILE;
-  else process.env.USERPROFILE = ORIG_USERPROFILE;
+  if (ORIG_HOME === undefined) {
+    delete process.env.HOME;
+  } else {
+    process.env.HOME = ORIG_HOME;
+  }
+  if (ORIG_USERPROFILE === undefined) {
+    delete process.env.USERPROFILE;
+  } else {
+    process.env.USERPROFILE = ORIG_USERPROFILE;
+  }
 }
 
 function makeRotundaRepo(dir: string): void {

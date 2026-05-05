@@ -1,8 +1,5 @@
-import { describe, it, beforeEach, afterEach } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert";
-import { writeFileSync, mkdirSync, existsSync, unlinkSync, rmSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
 
 /**
  * Tests for clearToken.

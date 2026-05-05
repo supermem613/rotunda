@@ -69,8 +69,11 @@ export async function runTui(opts: RunTuiOptions): Promise<TuiResult> {
   const next = (): Promise<Event> =>
     new Promise((resolve) => {
       const queued = queue.shift();
-      if (queued) resolve(queued);
-      else pendingResolver = resolve;
+      if (queued) {
+        resolve(queued);
+      } else {
+        pendingResolver = resolve;
+      }
     });
 
   // Wire input
@@ -96,8 +99,12 @@ export async function runTui(opts: RunTuiOptions): Promise<TuiResult> {
   stdout.write(ANSI_ALT_SCREEN_ON + ANSI_HIDE_CURSOR);
 
   const cleanup = (): void => {
-    try { unsubKeys(); } catch { /* ignore */ }
-    try { stdout.off("resize", onResize); } catch { /* ignore */ }
+    try {
+      unsubKeys(); 
+    } catch { /* ignore */ }
+    try {
+      stdout.off("resize", onResize); 
+    } catch { /* ignore */ }
     clearInterval(pollTimer);
     process.off("SIGINT", onSigInt);
     stdout.write(ANSI_SHOW_CURSOR + ANSI_ALT_SCREEN_OFF);
@@ -115,8 +122,12 @@ export async function runTui(opts: RunTuiOptions): Promise<TuiResult> {
       // Dispatch any sentinel-message side effects.
       if (state.message && state.message !== before.message) {
         const m = state.message;
-        if (m.startsWith("__merge__:"))  void runMerge(parseInt(m.slice("__merge__:".length), 10), state, opts, push);
-        if (m.startsWith("__editor__:")) void runEditor(parseInt(m.slice("__editor__:".length), 10), state, opts, stdout, push, () => state);
+        if (m.startsWith("__merge__:"))  {
+          void runMerge(parseInt(m.slice("__merge__:".length), 10), state, opts, push);
+        }
+        if (m.startsWith("__editor__:")) {
+          void runEditor(parseInt(m.slice("__editor__:".length), 10), state, opts, stdout, push, () => state);
+        }
       }
 
       // Lazy diff load when the user opens the modal
@@ -151,7 +162,9 @@ function currentViewport(stdout: NodeJS.WriteStream): Viewport {
 async function loadDiff(rowIndex: number, opts: RunTuiOptions): Promise<string> {
   const row = opts.changes[rowIndex];
   const root = opts.manifest.roots.find((r) => r.repo === row.rootName);
-  if (!root) return "(root not in manifest)";
+  if (!root) {
+    return "(root not in manifest)";
+  }
   const localFile = join(root.local, row.relativePath);
   const repoFile = join(opts.cwd, root.repo, row.relativePath);
   try {
@@ -191,7 +204,9 @@ async function runMerge(
   push: (e: Event) => void,
 ): Promise<void> {
   const row = state.rows[rowIndex];
-  if (!row) return;
+  if (!row) {
+    return;
+  }
   const root = opts.manifest.roots.find((r) => r.repo === row.change.rootName);
   if (!root) {
     push({ type: "merge-failure", rowIndex, error: "root not in manifest" });
@@ -199,8 +214,8 @@ async function runMerge(
   }
   const localFile = join(root.local, row.change.relativePath);
   const repoFile = join(opts.cwd, root.repo, row.change.relativePath);
-  let local = "";
-  let repo = "";
+  let local: string;
+  let repo: string;
   try {
     local = await readFile(localFile, "utf-8");
   } catch {
@@ -237,9 +252,13 @@ async function runEditor(
   getState: () => AppState,
 ): Promise<void> {
   const row = state.rows[rowIndex];
-  if (!row) return;
+  if (!row) {
+    return;
+  }
   const root = opts.manifest.roots.find((r) => r.repo === row.change.rootName);
-  if (!root) return;
+  if (!root) {
+    return;
+  }
   const localFile = join(root.local, row.change.relativePath);
   const repoFile = join(opts.cwd, root.repo, row.change.relativePath);
 

@@ -47,7 +47,9 @@ export function truncateToTokenBudget(
   label = "content",
 ): string {
   const maxChars = tokensToChars(maxTokens);
-  if (text.length <= maxChars) return text;
+  if (text.length <= maxChars) {
+    return text;
+  }
 
   // Cut on a line boundary when possible
   const cutoff = text.lastIndexOf("\n", maxChars);
@@ -66,7 +68,9 @@ export function truncateToTokenBudget(
  */
 export function truncateDiff(diff: string, maxTokens: number): string {
   const maxChars = tokensToChars(maxTokens);
-  if (diff.length <= maxChars) return diff;
+  if (diff.length <= maxChars) {
+    return diff;
+  }
 
   const lines = diff.split("\n");
   const kept: string[] = [];
@@ -101,7 +105,9 @@ export function truncateDiff(diff: string, maxTokens: number): string {
 
   // Count remaining hunks we skipped
   for (let i = kept.length; i < lines.length; i++) {
-    if (lines[i].startsWith("@@")) omittedHunks++;
+    if (lines[i].startsWith("@@")) {
+      omittedHunks++;
+    }
   }
 
   if (omittedHunks > 0) {

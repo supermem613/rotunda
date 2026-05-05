@@ -27,7 +27,9 @@ export function createProgress(total: number, label = "Analyzing"): Progress {
   const isTTY = process.stderr.isTTY ?? false;
 
   function render(): void {
-    if (!isTTY) return;
+    if (!isTTY) {
+      return;
+    }
 
     const pct = total > 0 ? completed / total : 0;
     const filled = Math.round(pct * BAR_WIDTH);

@@ -110,7 +110,7 @@ describe("layout / diff modal uses cached lines", () => {
       "+++ a/b\r\n\told\r\n+new" });
     const out = stripAnsi(render(state));
     // Tab expanded to four spaces, CR gone.
-    assert.match(out, /^    old$/m);
+    assert.match(out, /^ {4}old$/m);
     assert.doesNotMatch(out, /\r/);
   });
 

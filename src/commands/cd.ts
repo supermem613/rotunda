@@ -62,7 +62,9 @@ export function cdCommand(): void {
     // Mirror the child's exit. If killed by signal, exit non-zero so callers
     // (and shells) see a failure; we don't bother computing 128+signum because
     // re-raising the signal cleanly is platform-specific and rarely worth it.
-    if (signal) process.exit(1);
+    if (signal) {
+      process.exit(1);
+    }
     process.exit(code ?? 0);
   });
 }

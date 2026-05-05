@@ -1,10 +1,10 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { loadManifest } from "../../src/core/manifest.js";
-import { loadState, saveState, emptyState, updateStateFiles, removeFromState } from "../../src/core/state.js";
+import { emptyState, updateStateFiles } from "../../src/core/state.js";
 import { computeAllChanges, discoverFiles, hashFiles } from "../../src/core/engine.js";
 import type { SyncState, FileChange } from "../../src/core/types.js";
 

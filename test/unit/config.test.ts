@@ -264,14 +264,18 @@ describe("pickShell", () => {
   });
 
   it("on Windows, falls back to ComSpec/cmd.exe at minimum", () => {
-    if (process.platform !== "win32") return; // skip on non-Windows
+    if (process.platform !== "win32") {
+      return;
+    } // skip on non-Windows
     const result = pickShell(null);
     // Whatever it picks, it should be one of pwsh/powershell/cmd.exe.
     assert.match(result.cmd, /pwsh|powershell|cmd\.exe$/i);
   });
 
   it("on Unix, returns $SHELL or /bin/sh", () => {
-    if (process.platform === "win32") return; // skip on Windows
+    if (process.platform === "win32") {
+      return;
+    } // skip on Windows
     const result = pickShell(null);
     assert.equal(result.cmd, process.env.SHELL || "/bin/sh");
   });

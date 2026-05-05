@@ -62,25 +62,10 @@ function runCli(command: string, cwd: string): string {
   }
 }
 
-function writeManifest(repoDir: string, includes: string[]): void {
-  writeFileSync(
-    join(repoDir, "rotunda.json"),
-    JSON.stringify({
-      version: 1,
-      roots: [{
-        name: "config",
-        local: LOCAL,
-        repo: "config",
-        include: includes,
-        exclude: [],
-      }],
-      globalExclude: [".git"],
-    }, null, 2),
-  );
-}
-
 function cleanup(): void {
-  if (TMP) rmSync(TMP, { recursive: true, force: true });
+  if (TMP) {
+    rmSync(TMP, { recursive: true, force: true });
+  }
 }
 
 function freshTmp(): void {
