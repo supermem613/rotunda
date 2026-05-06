@@ -146,3 +146,116 @@ describe("executeApply", () => {
     assert.equal(r.state.files["claude/k.md"].hash, hashContent("L"));
   });
 });
+
+// Regression for the ENOENT-on-bulk-resolve bug. The TUI reducer now maps
+// delete-vs-modify conflicts to delete-* (not keep-*) when the winner side
+// is empty; this proves the apply pass succeeds end-to-end through the same
+// path the user hits in `rotunda sync`.
+describe("executeApply — delete-vs-modify conflicts via TUI bulk resolve", () => {
+  beforeEach(setup);
+  afterEach(cleanup);
+
+  async function applyThroughBulk(
+    change: FileChange,
+    bulkKey: "1" | "2",
+    initial: ReturnType<typeof emptyState>,
+  ) {
+    // Round-trip through the same code path the user hits in `rotunda sync`:
+    // initialState → bulk reduce (1=repo-wins / 2=local-wins) → planApply →
+    // executeApply. If the reducer mis-maps the conflict, executeApply
+    // crashes with ENOENT.
+    const { initialState: makeState, reduce } = await import("../../src/tui/state.js");
+    const s0 = makeState([change], { cols: 80, rows: 24 });
+    const s1 = reduce(s0, { type: "key", key: { name: bulkKey } });
+    const plan = planApply(s1.rows);
+    return { resolved: s1.rows[0].action, exec: await executeApply(plan, manifest(), REPO, initial) };
+  }
+
+  it("repo-wins on (repo deleted, local modified) deletes local — does NOT ENOENT", async () => {
+    // Setup: file exists locally (modified vs state), no repo file (deleted).
+    writeFileSync(join(LOCAL, "x.md"), "local-edit");
+    const change: FileChange = {
+      relativePath: "x.md", rootName: "claude", action: "conflict", side: "both",
+      localHash: hashContent("local-edit"),
+      repoHash: undefined,
+      stateHash: hashContent("original"),
+    };
+    const initial = emptyState();
+    initial.files["claude/x.md"] = { hash: hashContent("original"), size: 8, syncedAt: "now" };
+
+    const { resolved, exec } = await applyThroughBulk(change, "1", initial);
+
+    assert.equal(resolved, "delete-local",
+      "repo-wins on a repo-deleted conflict must propagate the deletion");
+    assert.equal(existsSync(join(LOCAL, "x.md")), false, "local file should be removed");
+    assert.equal(exec.state.files["claude/x.md"], undefined, "state entry should be cleared");
+    // No FAIL line in the log — the bug surfaced as `FAIL ... ENOENT`.
+    for (const line of exec.log) {
+      assert.equal(line.startsWith("FAIL"), false, `unexpected FAIL: ${line}`);
+    }
+  });
+
+  it("local-wins on (local deleted, repo modified) deletes repo — does NOT ENOENT", async () => {
+    // Setup: no local file (deleted), repo file exists (modified vs state).
+    mkdirSync(join(REPO, "claude"), { recursive: true });
+    writeFileSync(join(REPO, "claude", "y.md"), "repo-edit");
+    const change: FileChange = {
+      relativePath: "y.md", rootName: "claude", action: "conflict", side: "both",
+      localHash: undefined,
+      repoHash: hashContent("repo-edit"),
+      stateHash: hashContent("original"),
+    };
+    const initial = emptyState();
+    initial.files["claude/y.md"] = { hash: hashContent("original"), size: 8, syncedAt: "now" };
+
+    const { resolved, exec } = await applyThroughBulk(change, "2", initial);
+
+    assert.equal(resolved, "delete-repo",
+      "local-wins on a local-deleted conflict must propagate the deletion");
+    assert.equal(existsSync(join(REPO, "claude", "y.md")), false, "repo file should be removed");
+    assert.deepEqual(exec.gitPaths, [join("claude", "y.md")], "deletion must be staged");
+    assert.equal(exec.state.files["claude/y.md"], undefined);
+    for (const line of exec.log) {
+      assert.equal(line.startsWith("FAIL"), false, `unexpected FAIL: ${line}`);
+    }
+  });
+
+  it("repo-wins on (local deleted, repo modified) restores local file", async () => {
+    // The "well-behaved" half of the same conflict shape: repo-wins on a
+    // local-deleted conflict copies the surviving repo file back to local.
+    mkdirSync(join(REPO, "claude"), { recursive: true });
+    writeFileSync(join(REPO, "claude", "z.md"), "repo-content");
+    const change: FileChange = {
+      relativePath: "z.md", rootName: "claude", action: "conflict", side: "both",
+      localHash: undefined,
+      repoHash: hashContent("repo-content"),
+      stateHash: hashContent("original"),
+    };
+    const initial = emptyState();
+    initial.files["claude/z.md"] = { hash: hashContent("original"), size: 8, syncedAt: "now" };
+
+    const { resolved, exec } = await applyThroughBulk(change, "1", initial);
+
+    assert.equal(resolved, "keep-repo");
+    assert.equal(readFileSync(join(LOCAL, "z.md"), "utf-8"), "repo-content");
+    assert.equal(exec.state.files["claude/z.md"].hash, hashContent("repo-content"));
+  });
+
+  it("local-wins on (repo deleted, local modified) restores repo file", async () => {
+    writeFileSync(join(LOCAL, "w.md"), "local-content");
+    const change: FileChange = {
+      relativePath: "w.md", rootName: "claude", action: "conflict", side: "both",
+      localHash: hashContent("local-content"),
+      repoHash: undefined,
+      stateHash: hashContent("original"),
+    };
+    const initial = emptyState();
+    initial.files["claude/w.md"] = { hash: hashContent("original"), size: 8, syncedAt: "now" };
+
+    const { resolved, exec } = await applyThroughBulk(change, "2", initial);
+
+    assert.equal(resolved, "keep-local");
+    assert.equal(readFileSync(join(REPO, "claude", "w.md"), "utf-8"), "local-content");
+    assert.deepEqual(exec.gitPaths, [join("claude", "w.md")]);
+  });
+});

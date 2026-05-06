@@ -58,6 +58,40 @@ export function actionEffect(action: ResolvedAction): string {
   }
 }
 
+/**
+ * Per-side effect of a resolved action.
+ *
+ * Single source of truth for "what does this action do on each end?". Used
+ * by tests to cross-check against `executeApply` semantics, and available
+ * to UI surfaces that want to render `LOCAL: write | REPO: delete`-style
+ * columns instead of inferring from the action label.
+ *
+ * Invariant: if `sideEffect(a).local === "write"`, executeApply needs the
+ * source data on the *other* side to exist; same for `repo`. Bulk-resolution
+ * mappings (state.bulkActionFor) MUST never produce an action whose
+ * `write` side reads from a hash that is `undefined`.
+ */
+export type SideOp = "write" | "delete" | "none";
+export interface SideEffect {
+  local: SideOp;
+  repo: SideOp;
+}
+
+export function sideEffect(action: ResolvedAction): SideEffect {
+  switch (action) {
+    case "push":
+    case "keep-local":   return { local: "none",   repo: "write"  };
+    case "pull":
+    case "keep-repo":    return { local: "write",  repo: "none"   };
+    case "delete-local": return { local: "delete", repo: "none"   };
+    case "delete-repo":  return { local: "none",   repo: "delete" };
+    case "merge":        return { local: "write",  repo: "write"  };
+    case "defer":
+    case "skip":
+    case "conflict":     return { local: "none",   repo: "none"   };
+  }
+}
+
 /** Format the row's right-hand label including merge-error annotation. */
 export function rowAnnotation(row: Row): string {
   if (row.action === "conflict" && row.mergeError) {

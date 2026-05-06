@@ -132,6 +132,41 @@ describe("reduce / cycle action", () => {
     assert.deepEqual(cycle, ["keep-repo", "keep-local", "skip"]);
   });
 
+  // Delete-vs-modify conflicts: one side's hash is undefined. The cycle
+  // must NOT offer keep-X for the missing side (would ENOENT in apply).
+  // Instead, the deletion-propagation action takes its place.
+  it("conflict cycle when local is deleted (repo modified) → keep-repo / delete-repo / skip", () => {
+    const cycle = actionCycle({
+      relativePath: "x", rootName: "claude", action: "conflict", side: "both",
+      localHash: undefined, repoHash: "rh", stateHash: "sh",
+    });
+    assert.deepEqual(cycle, ["keep-repo", "delete-repo", "skip"]);
+  });
+
+  it("conflict cycle when repo is deleted (local modified) → delete-local / keep-local / skip", () => {
+    const cycle = actionCycle({
+      relativePath: "x", rootName: "claude", action: "conflict", side: "both",
+      localHash: "lh", repoHash: undefined, stateHash: "sh",
+    });
+    assert.deepEqual(cycle, ["delete-local", "keep-local", "skip"]);
+  });
+
+  it("delete-vs-modify conflict: cycling never produces keep-X for missing side", () => {
+    // Scenario: repo file was deleted, local was modified. Walking the
+    // cycle by hammering → must never land on keep-repo (no repo to keep).
+    let s: AppState = initialState([{
+      relativePath: "x", rootName: "claude", action: "conflict", side: "both",
+      localHash: "lh", repoHash: undefined, stateHash: "sh",
+    }], vp());
+    const seen = new Set<string>();
+    for (let i = 0; i < 6; i++) {
+      s = reduce(s, k("right"));
+      seen.add(s.rows[0].action);
+    }
+    assert.equal(seen.has("keep-repo"), false, "keep-repo would copy missing repo file → ENOENT");
+    assert.deepEqual([...seen].sort(), ["delete-local", "keep-local", "skip"]);
+  });
+
   it("conflict rows cycle through keep-repo → keep-local → skip", () => {
     let s: AppState = initialState([fc({ action: "conflict", side: "both", repoHash: "rh" })], vp());
     s = reduce(s, k("right"));
@@ -233,6 +268,117 @@ describe("reduce / bulk keys", () => {
     s = reduce(s, k("4"));
     assert.equal(s.rows[0].action, "push");
     assert.equal(s.rows[2].action, "conflict");
+  });
+});
+
+// Regression: rotunda sync `1` (repo-wins) used to always map conflicts
+// to keep-repo regardless of whether a repo file existed, causing
+// `executeApply` to ENOENT during copyFile when the conflict was
+// "repo deleted, local modified". The bulk-resolution must consult
+// localHash / repoHash so the chosen action matches actual file presence.
+describe("reduce / bulk keys — delete-vs-modify conflicts", () => {
+  // Build raw FileChange so `localHash: undefined` actually means undefined
+  // (the `fc()` helper applies a `?? "lh"` default that masks unset hashes).
+  function modBoth(): FileChange {
+    return {
+      relativePath: "mod-both", rootName: "claude", action: "conflict", side: "both",
+      localHash: "lh", repoHash: "rh", stateHash: "sh",
+    };
+  }
+  function localDeletedRepoModified(): FileChange {
+    return {
+      relativePath: "loc-del-repo-mod", rootName: "claude", action: "conflict", side: "both",
+      localHash: undefined, repoHash: "rh", stateHash: "sh",
+    };
+  }
+  function repoDeletedLocalModified(): FileChange {
+    return {
+      relativePath: "repo-del-loc-mod", rootName: "claude", action: "conflict", side: "both",
+      localHash: "lh", repoHash: undefined, stateHash: "sh",
+    };
+  }
+  function addedBothDifferent(): FileChange {
+    return {
+      relativePath: "add-both", rootName: "claude", action: "conflict", side: "both",
+      localHash: "lh", repoHash: "rh", stateHash: undefined,
+    };
+  }
+
+  it("repo-wins: modified-both → keep-repo (write local from repo)", () => {
+    let s: AppState = initialState([modBoth()], vp());
+    s = reduce(s, k("1"));
+    assert.equal(s.rows[0].action, "keep-repo");
+  });
+
+  it("repo-wins: local-deleted, repo-modified → keep-repo (restore local)", () => {
+    let s: AppState = initialState([localDeletedRepoModified()], vp());
+    s = reduce(s, k("1"));
+    assert.equal(s.rows[0].action, "keep-repo");
+  });
+
+  it("repo-wins: repo-deleted, local-modified → delete-local (propagate deletion, NOT keep-repo)", () => {
+    let s: AppState = initialState([repoDeletedLocalModified()], vp());
+    s = reduce(s, k("1"));
+    assert.equal(s.rows[0].action, "delete-local",
+      "repo-wins on a repo-deleted conflict must propagate the deletion, not copy a missing file");
+  });
+
+  it("repo-wins: added-both with different content → keep-repo", () => {
+    let s: AppState = initialState([addedBothDifferent()], vp());
+    s = reduce(s, k("1"));
+    assert.equal(s.rows[0].action, "keep-repo");
+  });
+
+  it("local-wins: modified-both → keep-local", () => {
+    let s: AppState = initialState([modBoth()], vp());
+    s = reduce(s, k("2"));
+    assert.equal(s.rows[0].action, "keep-local");
+  });
+
+  it("local-wins: local-deleted, repo-modified → delete-repo (propagate deletion, NOT keep-local)", () => {
+    let s: AppState = initialState([localDeletedRepoModified()], vp());
+    s = reduce(s, k("2"));
+    assert.equal(s.rows[0].action, "delete-repo",
+      "local-wins on a local-deleted conflict must propagate the deletion, not copy a missing file");
+  });
+
+  it("local-wins: repo-deleted, local-modified → keep-local (restore repo)", () => {
+    let s: AppState = initialState([repoDeletedLocalModified()], vp());
+    s = reduce(s, k("2"));
+    assert.equal(s.rows[0].action, "keep-local");
+  });
+
+  it("local-wins: added-both with different content → keep-local", () => {
+    let s: AppState = initialState([addedBothDifferent()], vp());
+    s = reduce(s, k("2"));
+    assert.equal(s.rows[0].action, "keep-local");
+  });
+
+  it("bulk-resolved actions all have the chosen winner's hash defined", () => {
+    // Cross-cutting invariant: for every conflict shape × winner, the
+    // resulting action's "write source" must be a hash that exists.
+    const shapes = [
+      modBoth(),
+      localDeletedRepoModified(),
+      repoDeletedLocalModified(),
+      addedBothDifferent(),
+    ];
+    for (const shape of shapes) {
+      for (const winner of ["1", "2"] as const) {
+        const s: AppState = initialState([shape], vp());
+        const out = reduce(s, k(winner)).rows[0];
+        // If the chosen action writes to local, the source (repo) must exist.
+        if (out.action === "keep-repo" || out.action === "pull") {
+          assert.notEqual(shape.repoHash, undefined,
+            `${winner === "1" ? "repo-wins" : "local-wins"} on shape ${shape.relativePath} produced ${out.action} without a repo file`);
+        }
+        // If the chosen action writes to repo, the source (local) must exist.
+        if (out.action === "keep-local" || out.action === "push") {
+          assert.notEqual(shape.localHash, undefined,
+            `${winner === "1" ? "repo-wins" : "local-wins"} on shape ${shape.relativePath} produced ${out.action} without a local file`);
+        }
+      }
+    }
   });
 });
 

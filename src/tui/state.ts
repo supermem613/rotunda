@@ -471,7 +471,27 @@ export function actionCycle(change: FileChange): ResolvedAction[] {
   if (change.action === "conflict") {
     // For conflicts, ←/→ cycles the two winner picks plus skip. Merge / defer /
     // editor are letter-keys that jump out of the cycle.
-    return ["keep-repo", "keep-local", "skip"];
+    //
+    // Delete-vs-modify conflicts have one side missing — offering keep-X for
+    // the missing side would copy a nonexistent file at apply time (ENOENT).
+    // We replace that pick with delete-other, which is the correct semantic:
+    // "winner side has no file" means propagate that deletion.
+    const hasLocal = change.localHash !== undefined;
+    const hasRepo = change.repoHash !== undefined;
+    if (hasLocal && hasRepo) {
+      return ["keep-repo", "keep-local", "skip"];
+    }
+    if (hasRepo && !hasLocal) {
+      // Local was deleted, repo modified. winner=repo restores local; winner=local
+      // propagates the deletion (delete-repo).
+      return ["keep-repo", "delete-repo", "skip"];
+    }
+    if (hasLocal && !hasRepo) {
+      // Repo was deleted, local modified. winner=local restores repo; winner=repo
+      // propagates the deletion (delete-local).
+      return ["delete-local", "keep-local", "skip"];
+    }
+    return ["skip"];
   }
   if (change.side === "local") {
     if (change.action === "deleted") {
@@ -550,7 +570,13 @@ function bulkApply(state: AppState, op: BulkOp): AppState {
 function bulkActionFor(r: Row, winner: "repo" | "local"): ResolvedAction {
   const c = r.change;
   if (c.action === "conflict") {
-    return winner === "repo" ? "keep-repo" : "keep-local";
+    // A conflict can have one side missing (delete-vs-modify). Picking the
+    // empty side as the winner means "propagate the deletion to the other
+    // side", not "copy the (nonexistent) file" — that would ENOENT in apply.
+    if (winner === "repo") {
+      return c.repoHash !== undefined ? "keep-repo" : "delete-local";
+    }
+    return c.localHash !== undefined ? "keep-local" : "delete-repo";
   }
   if (c.side === "local") {
     if (c.action === "deleted") {
