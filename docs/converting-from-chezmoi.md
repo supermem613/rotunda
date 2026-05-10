@@ -56,7 +56,7 @@ Some files in your chezmoi setup don't fit rotunda's bidirectional model:
    ```bash
    npm install -g rotunda
    ```
-   Requires Node.js 20 or later.
+   Requires Node.js 24 or later.
 
 2. **Have your chezmoi source directory accessible.** Usually at:
    - Linux/macOS: `~/.local/share/chezmoi`

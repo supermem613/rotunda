@@ -62,7 +62,7 @@ function runCli(args: string[], cwd: string, input = ""): string {
 }
 
 function getRemoteLog(): string {
-  return execFileSync("git", ["log", "--oneline", "--all"], { cwd: BARE, encoding: "utf-8" });
+  return execFileSync("git", ["-c", "safe.bareRepository=all", "log", "--oneline", "--all"], { cwd: BARE, encoding: "utf-8" });
 }
 
 function assertPreviewLine(output: string, expected: string): void {

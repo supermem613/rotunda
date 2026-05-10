@@ -315,7 +315,7 @@ describe("Auto git-pull: non-git directory", () => {
 });
 
 function getRemoteLog(bare: string): string {
-  return execFileSync("git", ["log", "--oneline", "--all"], { cwd: bare, encoding: "utf-8" });
+  return execFileSync("git", ["-c", "safe.bareRepository=all", "log", "--oneline", "--all"], { cwd: bare, encoding: "utf-8" });
 }
 
 describe("Git commit+push: sync command", () => {

@@ -1,6 +1,6 @@
 // Cross-platform test runner — expands glob and passes files to node --test
-// Needed because Node 20's --test flag doesn't support glob patterns natively.
-// Uses readdirSync + minimatch instead of fs.globSync (Node 22+ only).
+// Expands globs before invoking node:test so the same command shape works
+// consistently across shells.
 //
 // TENET: tests must be hermetic and produce identical results locally and in CI.
 // To enforce that, this runner stubs HOME/USERPROFILE to a throwaway directory
