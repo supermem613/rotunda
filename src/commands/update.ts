@@ -7,14 +7,37 @@ import { git, isGitRepo } from "../utils/git.js";
 
 const execAsync = promisify(exec);
 
-export async function updateCommand(): Promise<void> {
+type ExecResult = {
+  stdout: string;
+  stderr: string;
+};
+
+export type UpdateDeps = {
+  repoRoot?: string;
+  isGitRepo?: (dir: string) => Promise<boolean>;
+  runGit?: (args: string[], cwd: string) => Promise<ExecResult>;
+  runCommand?: (command: string, cwd: string) => Promise<void>;
+};
+
+export function gitPullMadeNoChanges(output: string): boolean {
+  return /already up[- ]to[- ]date\.?/i.test(output);
+}
+
+async function defaultRunCommand(command: string, cwd: string): Promise<void> {
+  await execAsync(command, { cwd });
+}
+
+export async function updateCommand(deps: UpdateDeps = {}): Promise<void> {
   // Resolve the rotunda repo root from this file's location (dist/commands/update.js → repo root)
   const thisFile = fileURLToPath(import.meta.url);
-  const repoRoot = dirname(dirname(dirname(thisFile)));
+  const repoRoot = deps.repoRoot ?? dirname(dirname(dirname(thisFile)));
+  const checkGitRepo = deps.isGitRepo ?? isGitRepo;
+  const runGit = deps.runGit ?? git;
+  const runCommand = deps.runCommand ?? defaultRunCommand;
 
   console.log(chalk.dim(`  Rotunda repo: ${repoRoot}\n`));
 
-  if (!(await isGitRepo(repoRoot))) {
+  if (!(await checkGitRepo(repoRoot))) {
     console.error(chalk.red("Error:") + " Rotunda install directory is not a git repo.");
     process.exit(1);
   }
@@ -22,10 +45,12 @@ export async function updateCommand(): Promise<void> {
   // 1. git pull
   console.log(chalk.bold("  ↓ Pulling latest..."));
   try {
-    const result = await git(["pull", "--ff-only"], repoRoot);
+    const result = await runGit(["pull", "--ff-only"], repoRoot);
     const output = (result.stdout + result.stderr).trim();
-    if (output.includes("Already up to date")) {
+    if (gitPullMadeNoChanges(output)) {
       console.log(chalk.dim("    Already up to date."));
+      console.log(chalk.dim("    Skipping install and build."));
+      return;
     } else {
       console.log(chalk.green("    ✓ Pulled new changes."));
     }
@@ -38,9 +63,7 @@ export async function updateCommand(): Promise<void> {
   // 2. npm install
   console.log(chalk.bold("\n  ⬡ Installing dependencies..."));
   try {
-    await execAsync("npm install --no-audit --no-fund", {
-      cwd: repoRoot,
-    });
+    await runCommand("npm install --no-audit --no-fund", repoRoot);
     console.log(chalk.green("    ✓ Dependencies installed."));
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -51,9 +74,7 @@ export async function updateCommand(): Promise<void> {
   // 3. npm run build
   console.log(chalk.bold("\n  🔨 Building..."));
   try {
-    await execAsync("npm run build", {
-      cwd: repoRoot,
-    });
+    await runCommand("npm run build", repoRoot);
     console.log(chalk.green("    ✓ Build complete."));
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
