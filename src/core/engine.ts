@@ -1,4 +1,4 @@
-import { readdir, stat } from "node:fs/promises";
+import { readdir, realpath, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 import type {
   FileChange,
@@ -7,6 +7,13 @@ import type {
 } from "./types.js";
 import { hashFile } from "../utils/hash.js";
 import { shouldInclude } from "../utils/glob.js";
+
+const MAX_WALK_DEPTH = 64;
+
+function normalizeRealPath(path: string): string {
+  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
 
 /**
  * Recursively discover all managed files in a directory,
@@ -99,11 +106,32 @@ export async function discoverFiles(
     ];
   }
 
-  async function walk(dir: string): Promise<void> {
+  function addFile(relPath: string, fullPath: string): void {
+    if (shouldInclude(relPath, include, exclude, globalExclude)) {
+      files.set(relPath, fullPath);
+    }
+  }
+
+  async function walk(dir: string, ancestors = new Set<string>(), depth = 0): Promise<void> {
+    if (depth > MAX_WALK_DEPTH) {
+      return;
+    }
     if (walkedDirs.has(dir)) {
       return;
     }
     walkedDirs.add(dir);
+
+    let realDir: string;
+    try {
+      realDir = normalizeRealPath(await realpath(dir));
+    } catch {
+      return;
+    }
+    if (ancestors.has(realDir)) {
+      return;
+    }
+    const childAncestors = new Set(ancestors);
+    childAncestors.add(realDir);
 
     let entries;
     try {
@@ -120,11 +148,23 @@ export async function discoverFiles(
       if (entry.isDirectory()) {
         // Check if the directory name itself is excluded
         if (shouldInclude(relPath, [], exclude, globalExclude)) {
-          await walk(fullPath);
+          await walk(fullPath, childAncestors, depth + 1);
         }
       } else if (entry.isFile()) {
-        if (shouldInclude(relPath, include, exclude, globalExclude)) {
-          files.set(relPath, fullPath);
+        addFile(relPath, fullPath);
+      } else if (entry.isSymbolicLink()) {
+        let target;
+        try {
+          target = await stat(fullPath);
+        } catch {
+          continue;
+        }
+        if (target.isDirectory()) {
+          if (shouldInclude(relPath, [], exclude, globalExclude)) {
+            await walk(fullPath, childAncestors, depth + 1);
+          }
+        } else if (target.isFile()) {
+          addFile(relPath, fullPath);
         }
       }
     }
@@ -146,7 +186,7 @@ export async function discoverFiles(
     }
   }
 
-  return files;
+  return new Map([...files.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
 }
 
 /**
@@ -299,7 +339,7 @@ export function computeChanges(
   }
 
   // Sort by path for deterministic output
-  changes.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+  changes.sort((a, b) => a.relativePath < b.relativePath ? -1 : a.relativePath > b.relativePath ? 1 : 0);
   return changes;
 }
 

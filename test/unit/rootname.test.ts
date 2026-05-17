@@ -1,7 +1,7 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import {
-  mkdirSync, writeFileSync, rmSync,
+  mkdirSync, writeFileSync, rmSync, symlinkSync,
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -12,6 +12,24 @@ import { computeAllChanges, computeChanges, discoverFiles, hashFiles } from "../
 const TMP = join(tmpdir(), "rotunda-rootname-test");
 const REPO = join(TMP, "repo");
 const LOCAL = join(TMP, "local");
+
+function linkDirectory(target: string, linkPath: string): boolean {
+  try {
+    symlinkSync(target, linkPath, process.platform === "win32" ? "junction" : "dir");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function linkFile(target: string, linkPath: string): boolean {
+  try {
+    symlinkSync(target, linkPath, "file");
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function setup() {
   rmSync(TMP, { recursive: true, force: true });
@@ -154,6 +172,91 @@ describe("discoverFiles include seeding", () => {
     );
 
     assert.deepEqual([...files.keys()], ["skills/commit/SKILL.md"]);
+  });
+
+  it("snapshots files below a linked directory target using the link relative path", async (t) => {
+    const target = join(TMP, "sp-api-skill");
+    mkdirSync(join(target, "references"), { recursive: true });
+    writeFileSync(join(target, "SKILL.md"), "# sp-api");
+    writeFileSync(join(target, "references", "search.md"), "# Search");
+
+    const link = join(LOCAL, ".claude", "skills", "sp-api");
+    if (!linkDirectory(target, link)) {
+      t.skip("directory link creation is not available in this environment");
+      return;
+    }
+
+    const files = await discoverFiles(
+      join(LOCAL, ".claude"),
+      ["skills/**"],
+      [],
+      [],
+    );
+
+    assert.deepEqual([...files.keys()], [
+      "skills/sp-api/SKILL.md",
+      "skills/sp-api/references/search.md",
+    ]);
+    assert.equal(files.get("skills/sp-api/SKILL.md"), join(link, "SKILL.md"));
+  });
+
+  it("snapshots linked files under managed directories", async (t) => {
+    const target = join(TMP, "external-skill.md");
+    writeFileSync(target, "# External");
+    const link = join(LOCAL, ".claude", "skills", "external.md");
+    if (!linkFile(target, link)) {
+      t.skip("file symlink creation is not available in this environment");
+      return;
+    }
+
+    const files = await discoverFiles(
+      join(LOCAL, ".claude"),
+      ["skills/**"],
+      [],
+      [],
+    );
+
+    assert.deepEqual([...files.keys()], ["skills/external.md"]);
+    assert.equal(files.get("skills/external.md"), link);
+  });
+
+  it("does not recurse forever through linked directory cycles", async (t) => {
+    const skills = join(LOCAL, ".claude", "skills");
+    mkdirSync(join(skills, "a"), { recursive: true });
+    writeFileSync(join(skills, "a", "SKILL.md"), "# A");
+    if (!linkDirectory(skills, join(skills, "a", "loop"))) {
+      t.skip("directory link creation is not available in this environment");
+      return;
+    }
+
+    const files = await discoverFiles(
+      join(LOCAL, ".claude"),
+      ["skills/**"],
+      [],
+      [],
+    );
+
+    assert.deepEqual([...files.keys()], ["skills/a/SKILL.md"]);
+  });
+
+  it("does not traverse linked directories excluded by name", async (t) => {
+    const target = join(TMP, "excluded-skill");
+    mkdirSync(target, { recursive: true });
+    writeFileSync(join(target, "SKILL.md"), "# Excluded");
+    const link = join(LOCAL, ".claude", "skills", "sp-api");
+    if (!linkDirectory(target, link)) {
+      t.skip("directory link creation is not available in this environment");
+      return;
+    }
+
+    const files = await discoverFiles(
+      join(LOCAL, ".claude"),
+      ["skills/**"],
+      ["skills/sp-api/**"],
+      [],
+    );
+
+    assert.deepEqual([...files.keys()], []);
   });
 });
 

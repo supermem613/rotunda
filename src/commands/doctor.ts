@@ -1,9 +1,10 @@
-import { access, readFile, readdir, constants, writeFile, rm, mkdir } from "node:fs/promises";
+import { access, readFile, constants, writeFile, rm, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, normalize, dirname } from "node:path";
 import { createInterface } from "node:readline";
 import chalk from "chalk";
 import { loadManifest, RotundaError } from "../core/manifest.js";
+import { discoverFiles } from "../core/engine.js";
 import {
   loadGlobalConfig,
   getGlobalConfigPath,
@@ -121,7 +122,7 @@ async function checkOrphans(manifest: Manifest): Promise<DoctorCheck> {
   for (const root of manifest.roots) {
     let entries: string[];
     try {
-      entries = await readdirRecursive(root.local);
+      entries = await listAllFiles(root.local);
     } catch {
       continue; // dir doesn't exist — caught by local structure check
     }
@@ -156,25 +157,8 @@ async function checkOrphans(manifest: Manifest): Promise<DoctorCheck> {
   return check("Orphan detection", "pass", "no untracked files in local dirs");
 }
 
-async function readdirRecursive(dir: string): Promise<string[]> {
-  const results: string[] = [];
-  let entries;
-  try {
-    entries = await readdir(dir, { withFileTypes: true });
-  } catch {
-    return results;
-  }
-  for (const entry of entries) {
-    const full = join(dir, entry.name);
-    const rel = full.slice(dir.length + 1).replace(/\\/g, "/");
-    if (entry.isDirectory()) {
-      const sub = await readdirRecursive(full);
-      results.push(...sub.map((s) => `${rel}/${s}`));
-    } else if (entry.isFile()) {
-      results.push(rel);
-    }
-  }
-  return results;
+async function listAllFiles(dir: string): Promise<string[]> {
+  return [...(await discoverFiles(dir, [], [], [])).keys()];
 }
 
 async function checkStateDrift(manifest: Manifest, repoPath: string, state: SyncState): Promise<DoctorCheck> {
@@ -234,7 +218,7 @@ async function checkIgnoreCoverage(manifest: Manifest, repoPath: string): Promis
     const repoDir = join(repoPath, root.repo);
     let allRepoFiles: string[];
     try {
-      allRepoFiles = await readdirRecursive(repoDir);
+      allRepoFiles = await listAllFiles(repoDir);
     } catch {
       continue;
     }
