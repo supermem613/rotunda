@@ -68,6 +68,15 @@ export interface TrackingPlan {
     local?: string;
     repo?: string;
   };
+  /**
+   * Requested change to the target root's `pruneEmptyDirs` setting:
+   *   - `undefined` — user didn't pass the flag, leave the field alone
+   *   - `true`/`false` — user requested an explicit value
+   *
+   * Surfaced in the preview as a separate line. Applied to `nextManifest`
+   * by `planTrackingPathChange` so `applyTrackingPlan` writes one document.
+   */
+  pruneEmptyDirsChange?: boolean;
   nextManifest: ManifestDocument;
   repoCopies: PlannedRepoCopy[];
   repoDeletes: PlannedRepoDelete[];
@@ -317,6 +326,7 @@ export async function planTrackingPathChange(
   target: TrackingTarget,
   kind: TrackingOperation,
   newRootName?: string,
+  pruneEmptyDirsChange?: boolean,
 ): Promise<TrackingPlan> {
   const match = findMatchingRootForTarget(manifest, manifestDocument, target.absolutePath);
   const nextManifest = structuredClone(manifestDocument);
@@ -590,6 +600,12 @@ export async function planTrackingPathChange(
     rootRepo,
     inferredPattern,
     manifestMutation,
+    pruneEmptyDirsChange: applyPruneChangeToNextManifest(
+      nextManifest,
+      rootName,
+      pruneEmptyDirsChange,
+      manifestMutation.kind,
+    ),
     nextManifest,
     repoCopies,
     repoDeletes,
@@ -651,4 +667,45 @@ export async function applyTrackingPlan(
     log,
     state,
   };
+}
+
+/**
+ * Mutate `nextManifest` in place to apply the requested `pruneEmptyDirs`
+ * change to the named root, and return what actually changed so the preview
+ * can show it.
+ *
+ * Returns `undefined` when no change was requested OR when the change is a
+ * no-op (e.g. user passed `--prune-empty-dirs` but the root already has it).
+ * This keeps the preview honest — we only show the line when something
+ * actually differs.
+ *
+ * When the mutation is `remove-root`, the target root is gone from
+ * `nextManifest`, so any requested change is moot and we return undefined.
+ */
+function applyPruneChangeToNextManifest(
+  nextManifest: ManifestDocument,
+  rootName: string,
+  requested: boolean | undefined,
+  mutationKind: ManifestMutationKind,
+): boolean | undefined {
+  if (requested === undefined) {
+    return undefined;
+  }
+  if (mutationKind === "remove-root") {
+    return undefined;
+  }
+  const root = nextManifest.roots.find((r) => r.name === rootName);
+  if (!root) {
+    return undefined;
+  }
+  const current = root.pruneEmptyDirs ?? false;
+  if (current === requested) {
+    return undefined;
+  }
+  if (requested) {
+    root.pruneEmptyDirs = true;
+  } else {
+    delete root.pruneEmptyDirs;
+  }
+  return requested;
 }

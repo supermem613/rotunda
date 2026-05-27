@@ -140,6 +140,16 @@ Behavior:
 
 Default is `false` to preserve existing behavior for tools that rely on an empty directory continuing to exist.
 
+You can toggle this field from the CLI without hand-editing `rotunda.json`:
+
+```bash
+rotunda add ~/.claude/skills --prune-empty-dirs   # set on the matching/new root in the same step
+rotunda set claude --prune-empty-dirs             # toggle on an existing root
+rotunda set claude --no-prune-empty-dirs          # turn it back off
+```
+
+See [`rotunda add`](commands.md#rotunda-add) and [`rotunda set`](commands.md#rotunda-set) for details.
+
 
 ### Global Excludes
 

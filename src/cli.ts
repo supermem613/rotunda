@@ -16,6 +16,7 @@ import { listCommand } from "./commands/list.js";
 import { pullCommand } from "./commands/pull.js";
 import { pushCommand } from "./commands/push.js";
 import { removeCommand } from "./commands/remove.js";
+import { setCommand } from "./commands/set.js";
 import { statusCommand } from "./commands/status.js";
 import { syncCommand } from "./commands/sync.js";
 import { updateCommand } from "./commands/update.js";
@@ -37,6 +38,11 @@ program
   .command("add")
   .description("Add a file or directory path to rotunda tracking, creating a root if needed")
   .argument("<path>", "Path to the file or directory to start tracking")
+  .option(
+    "--prune-empty-dirs",
+    "Set pruneEmptyDirs=true on the matching root (removes empty parent dirs after deletes on sync)",
+  )
+  .option("--no-prune-empty-dirs", "Set pruneEmptyDirs=false on the matching root (default)")
   .action(addCommand);
 
 program
@@ -108,6 +114,17 @@ program
   .description("Stop tracking a file or directory path, removing repo copies as needed")
   .argument("<path>", "Path to the file or directory to stop tracking")
   .action(removeCommand);
+
+program
+  .command("set")
+  .description("Edit a SyncRoot's settings in rotunda.json (no file copy/delete)")
+  .argument("<root>", "Name of the root in rotunda.json to edit")
+  .option(
+    "--prune-empty-dirs",
+    "Set pruneEmptyDirs=true (removes empty parent dirs after deletes on sync)",
+  )
+  .option("--no-prune-empty-dirs", "Clear pruneEmptyDirs (back to default false)")
+  .action(setCommand);
 
 program
   .command("status")
