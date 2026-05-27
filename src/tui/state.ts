@@ -9,7 +9,7 @@
  * reducer can be tested with synthetic streams without a real terminal.
  */
 
-import type { FileChange } from "../core/types.js";
+import type { FileChange, Manifest } from "../core/types.js";
 
 /** What we will actually do with a row when the user hits Apply. */
 export type ResolvedAction =
@@ -55,6 +55,13 @@ export interface Row {
    * ESC / scroll responsive when the diff is large.
    */
   diffLines?: string[];
+  /**
+   * True when this row is a delete on a root that has `pruneEmptyDirs: true`
+   * in the manifest. Surfaced as a UI hint in the preview so the user knows
+   * the apply pass may also collapse now-empty parent directories. Set once
+   * by `initialState` from the manifest; not changed by the reducer.
+   */
+  pruneHint?: boolean;
 }
 
 /** Top-level view of the TUI. Each maps to a different render function. */
@@ -153,13 +160,25 @@ export function initialState(
   changes: FileChange[],
   viewport: Viewport,
   deferred: Record<string, { reason: string; capturedAt: string }> = {},
+  manifest?: Manifest,
 ): AppState {
+  const pruneRoots = new Set<string>();
+  if (manifest) {
+    for (const r of manifest.roots) {
+      if (r.pruneEmptyDirs) {
+        pruneRoots.add(r.repo);
+      }
+    }
+  }
   const rows: Row[] = changes.map((change) => {
     const stateKey = `${change.rootName}/${change.relativePath}`;
     const isDeferred = !!deferred[stateKey];
+    const action: ResolvedAction = isDeferred ? "defer" : defaultAction(change);
+    const isDelete = action === "delete-local" || action === "delete-repo";
     return {
       change,
-      action: isDeferred ? "defer" : defaultAction(change),
+      action,
+      pruneHint: isDelete && pruneRoots.has(change.rootName) ? true : undefined,
     };
   });
   return {

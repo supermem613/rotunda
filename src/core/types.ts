@@ -9,6 +9,16 @@ export interface SyncRoot {
   repo: string; // relative path within the repo
   include: string[];
   exclude: string[];
+  /**
+   * When true, after apply removes a file from this root rotunda walks the
+   * file's parent directories upward (non-recursive rmdir) and removes any
+   * that became empty, stopping at the first non-empty directory or at the
+   * root boundary. The root directory itself is never removed. Applies to
+   * both local and repo sides symmetrically. Defaults to false to preserve
+   * existing behavior for tools that rely on a directory existing even when
+   * it has no files.
+   */
+  pruneEmptyDirs?: boolean;
 }
 
 /** Per-root override within a machine override. */

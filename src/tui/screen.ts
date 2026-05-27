@@ -52,7 +52,7 @@ export async function runTui(opts: RunTuiOptions): Promise<TuiResult> {
   const stdin = opts.stdin ?? process.stdin;
 
   const viewport = currentViewport(stdout);
-  let state: AppState = initialState(opts.changes, viewport, opts.state.deferred);
+  let state: AppState = initialState(opts.changes, viewport, opts.state.deferred, opts.manifest);
 
   // Event loop primitives
   let pendingResolver: ((evt: Event) => void) | null = null;

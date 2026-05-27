@@ -103,5 +103,8 @@ export function rowAnnotation(row: Row): string {
   if (row.action === "defer") {
     return chalk.dim("(deferred)");
   }
+  if (row.pruneHint && (row.action === "delete-local" || row.action === "delete-repo")) {
+    return chalk.dim("(may prune empty parents)");
+  }
   return "";
 }

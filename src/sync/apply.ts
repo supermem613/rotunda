@@ -11,8 +11,8 @@
  * after the apply gate has verified there are no unresolved-conflict rows.
  */
 
-import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
-import { join, dirname } from "node:path";
+import { copyFile, mkdir, rm, rmdir, writeFile } from "node:fs/promises";
+import { join, dirname, relative, resolve, sep } from "node:path";
 import type { Manifest, SyncState, FileChange } from "../core/types.js";
 import { hashContent } from "../utils/hash.js";
 import {
@@ -129,6 +129,12 @@ export async function executeApply(
           await rm(localFile, { recursive: true, force: true });
           state = removeFromState(state, rootDef.repo, [change.relativePath]);
           log.push(`DEL-LOCAL ${change.rootName}/${change.relativePath}`);
+          if (rootDef.pruneEmptyDirs) {
+            const pruned = await pruneEmptyParents(localFile, rootDef.local);
+            for (const dir of pruned) {
+              log.push(`PRUNE-LOCAL ${change.rootName}/${dir}`);
+            }
+          }
           break;
         }
         case "delete-repo": {
@@ -136,6 +142,13 @@ export async function executeApply(
           gitPaths.push(join(rootDef.repo, change.relativePath));
           state = removeFromState(state, rootDef.repo, [change.relativePath]);
           log.push(`DEL-REPO ${change.rootName}/${change.relativePath}`);
+          if (rootDef.pruneEmptyDirs) {
+            const repoBoundary = join(cwd, rootDef.repo);
+            const pruned = await pruneEmptyParents(repoFile, repoBoundary);
+            for (const dir of pruned) {
+              log.push(`PRUNE-REPO ${change.rootName}/${dir}`);
+            }
+          }
           break;
         }
         case "merge": {
@@ -205,4 +218,60 @@ async function snapshotForDefer(
     stateHash: change.stateHash,
   };
   await writeFile(join(dir, "meta.json"), JSON.stringify(meta, null, 2) + "\n", "utf-8");
+}
+
+/**
+ * Walk the parent directories of `absFile` upward, removing each that is now
+ * empty, and stop at the first non-empty directory or when we hit
+ * `rootBoundary`. The boundary directory itself is NEVER removed: roots are
+ * structural anchors and removing them would invalidate the manifest mapping.
+ *
+ * Returns the list of root-relative directory paths removed, in deepest-first
+ * order, ready to be appended to `ExecuteResult.log` as PRUNE-* lines.
+ *
+ * Implementation notes:
+ *   - Uses non-recursive `rmdir`, which fails fast with ENOTEMPTY when a
+ *     sibling file is present — this is the natural stop condition, no need
+ *     to enumerate directory contents ourselves.
+ *   - Any error other than ENOTEMPTY/ENOTDIR/ENOENT is swallowed: the file
+ *     delete already succeeded and we won't fail the apply over a pruning
+ *     hiccup. ENOENT can occur if a concurrent process already removed the
+ *     parent.
+ *   - Boundary check uses resolved absolute paths so symlinks or `..`
+ *     segments in the manifest can't trick the walk into deleting outside
+ *     the root.
+ */
+export async function pruneEmptyParents(
+  absFile: string,
+  rootBoundary: string,
+): Promise<string[]> {
+  const boundary = resolve(rootBoundary);
+  let dir = resolve(dirname(absFile));
+  const removed: string[] = [];
+  while (dir !== boundary && dir.startsWith(boundary + sep)) {
+    try {
+      await rmdir(dir);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOTEMPTY" || code === "ENOTDIR" || code === "EEXIST") {
+        break;
+      }
+      if (code === "ENOENT") {
+        // Already gone; keep walking so we still surface higher empty parents.
+        const rel = relative(boundary, dir).split(/[\\/]/).join("/");
+        if (rel) {
+          removed.push(rel);
+        }
+        dir = dirname(dir);
+        continue;
+      }
+      break;
+    }
+    const rel = relative(boundary, dir).split(/[\\/]/).join("/");
+    if (rel) {
+      removed.push(rel);
+    }
+    dir = dirname(dir);
+  }
+  return removed;
 }

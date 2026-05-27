@@ -57,7 +57,7 @@ export async function syncCommand(options: { yes?: boolean }): Promise<void> {
       rowsToApply = result.state.rows;
     } else {
       // Headless: build engine-default rows and refuse to apply when conflicts exist.
-      const initial = initialState(allChanges, { cols: 80, rows: 24 }, state.deferred);
+      const initial = initialState(allChanges, { cols: 80, rows: 24 }, state.deferred, manifest);
       const conflicts = initial.rows.filter((r) => r.action === "conflict");
       if (conflicts.length > 0) {
         console.log(chalk.magenta(`  ⚠ ${conflicts.length} unresolved conflict(s):`));
@@ -79,6 +79,18 @@ export async function syncCommand(options: { yes?: boolean }): Promise<void> {
     const exec = await executeApply(plan, manifest, cwd, state);
     for (const line of exec.log) {
       console.log("  " + line);
+    }
+
+    const pruneLocal = exec.log.filter((l) => l.startsWith("PRUNE-LOCAL ")).length;
+    const pruneRepo = exec.log.filter((l) => l.startsWith("PRUNE-REPO ")).length;
+    const pruneTotal = pruneLocal + pruneRepo;
+    if (pruneTotal > 0) {
+      console.log(
+        chalk.dim(
+          `  Pruned ${pruneTotal} empty dir${pruneTotal === 1 ? "" : "s"} ` +
+            `(${pruneLocal} local, ${pruneRepo} repo).`,
+        ),
+      );
     }
 
     await saveState(cwd, exec.state);

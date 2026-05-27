@@ -50,6 +50,7 @@ Each entry in the `roots` array maps a local directory on your machine to a dire
 | `repo`    | `string`   | Yes      | —       | Relative path within the repository (e.g., `".claude"`).   |
 | `include` | `string[]` | Yes      | —       | Glob patterns for files to include. An empty array `[]` means include everything not excluded. |
 | `exclude` | `string[]` | Yes      | —       | Glob patterns for files to exclude from this root.         |
+| `pruneEmptyDirs` | `boolean` | No | `false` | When `true`, after a file is deleted from this root, rotunda removes any parent directories that became empty, walking upward until it hits a non-empty directory or the root itself. Applies to both local and repo sides. See [Pruning Empty Directories](#pruning-empty-directories). |
 
 ### Path Resolution
 
@@ -111,6 +112,34 @@ They do **not** manage:
 - `machineOverrides`
 
 If you need to make larger structural edits than that, edit `rotunda.json` directly.
+
+### Pruning Empty Directories
+
+By default, rotunda only deletes files. When a delete leaves behind an empty directory hierarchy, those empty directories stay on disk and inside the repo working tree — git does not track empty directories, but the local copy still shows them.
+
+Set `pruneEmptyDirs: true` on a root to make rotunda clean those up automatically:
+
+```json
+{
+  "name": "claude",
+  "local": "~/.claude",
+  "repo": ".claude",
+  "include": ["skills/**"],
+  "exclude": [],
+  "pruneEmptyDirs": true
+}
+```
+
+Behavior:
+
+- After every successful `delete-local` or `delete-repo` op on a root with `pruneEmptyDirs: true`, rotunda walks the file's parent directories upward and removes each one that is now empty.
+- The walk stops at the first non-empty directory or at the root boundary (`local` for local-side deletes, `repo` for repo-side deletes).
+- The root directory itself is never removed.
+- Each pruned directory is logged as `PRUNE-LOCAL <root>/<dir>` or `PRUNE-REPO <root>/<dir>`, interleaved with the file ops in the apply output. A summary line `Pruned N empty dirs (L local, R repo).` is printed at the end of sync.
+- The sync TUI tags delete rows under a prune-enabled root with `(may prune empty parents)` so you know the apply pass may also collapse empty parents — exact directories are only known after apply runs.
+
+Default is `false` to preserve existing behavior for tools that rely on an empty directory continuing to exist.
+
 
 ### Global Excludes
 
