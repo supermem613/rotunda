@@ -13,7 +13,7 @@
 
 import { copyFile, mkdir, readdir, rm, rmdir, writeFile } from "node:fs/promises";
 import { join, dirname, relative, resolve, sep } from "node:path";
-import type { Manifest, SyncState, FileChange } from "../core/types.js";
+import type { Manifest, SyncState, FileChange, SyncRoot } from "../core/types.js";
 import { hashContent } from "../utils/hash.js";
 import {
   updateStateFiles,
@@ -189,10 +189,22 @@ export async function executeApply(
     }
   }
 
-  // End-of-apply sweep: for every root with pruneEmptyDirs enabled, walk each
-  // boundary on both sides bottom-up and rmdir any empty subtree the user (or
-  // another tool) may have left behind. This is what makes pruneEmptyDirs feel
-  // like a state — not just a reaction to file deletes in this run.
+  return { state, gitPaths, log };
+}
+
+/**
+ * Sweep empty dirs under every configured pruneEmptyDirs boundary for every
+ * root in the manifest. This runs independently of any apply pass so empty
+ * dirs created by the user (or other tools) are cleaned up on every sync,
+ * not just syncs that happen to delete files. Returns log lines using the
+ * same PRUNE-LOCAL / PRUNE-REPO prefixes the apply pass uses, so the sync
+ * summary counter picks them up unchanged.
+ */
+export async function sweepAllConfiguredRoots(
+  manifest: { roots: SyncRoot[] },
+  cwd: string,
+): Promise<string[]> {
+  const log: string[] = [];
   for (const rootDef of manifest.roots) {
     if (!rootDef.pruneEmptyDirs) continue;
     const boundaries = boundaryAbsList(rootDef.pruneEmptyDirs);
@@ -217,8 +229,7 @@ export async function executeApply(
       }
     }
   }
-
-  return { state, gitPaths, log };
+  return log;
 }
 
 /**

@@ -149,7 +149,7 @@ In the example above, deleting `~/.copilot/skills/foo/bar.md` may prune `skills/
 
 Behavior:
 
-- **End-of-sync sweep:** After every `rotunda sync` (or `rotunda push`/`pull` that runs the apply pass), rotunda walks each prune boundary on both sides and removes any empty descendant directory — even ones the user (or another tool) created outside of a rotunda delete. This makes `pruneEmptyDirs` behave like a desired state, not just a reaction to file deletes in this run.
+- **End-of-sync sweep:** Every `rotunda sync` walks each prune boundary on both sides and removes any empty descendant directory — even ones the user (or another tool) created outside of a rotunda delete. The sweep runs unconditionally, including syncs where no files change, so `pruneEmptyDirs` behaves like a desired state and not just a reaction to file deletes in this run.
 - **Delete-driven prune:** After every successful `delete-local` or `delete-repo` op on a root with `pruneEmptyDirs` enabled, rotunda walks the file's parent directories upward and removes each one that is now empty (this also feeds the same log lines).
 - For `true`, the walk stops at the root boundary (`local` for local-side deletes, `repo` for repo-side deletes).
 - For `string[]`, the walk stops at the longest matching sub-path. If no sub-path covers a deleted file, that delete does not trigger pruning; the sweep still cleans empty descendants of each listed sub-path.
