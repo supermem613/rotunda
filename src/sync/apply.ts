@@ -129,8 +129,9 @@ export async function executeApply(
           await rm(localFile, { recursive: true, force: true });
           state = removeFromState(state, rootDef.repo, [change.relativePath]);
           log.push(`DEL-LOCAL ${change.rootName}/${change.relativePath}`);
-          if (rootDef.pruneEmptyDirs) {
-            const pruned = await pruneEmptyParents(localFile, rootDef.local);
+          const localBoundary = resolvePruneBoundary(localFile, rootDef.local, rootDef.pruneEmptyDirs);
+          if (localBoundary) {
+            const pruned = await pruneEmptyParents(localFile, localBoundary);
             for (const dir of pruned) {
               log.push(`PRUNE-LOCAL ${change.rootName}/${dir}`);
             }
@@ -142,8 +143,9 @@ export async function executeApply(
           gitPaths.push(join(rootDef.repo, change.relativePath));
           state = removeFromState(state, rootDef.repo, [change.relativePath]);
           log.push(`DEL-REPO ${change.rootName}/${change.relativePath}`);
-          if (rootDef.pruneEmptyDirs) {
-            const repoBoundary = join(cwd, rootDef.repo);
+          const repoRootAbs = join(cwd, rootDef.repo);
+          const repoBoundary = resolvePruneBoundary(repoFile, repoRootAbs, rootDef.pruneEmptyDirs);
+          if (repoBoundary) {
             const pruned = await pruneEmptyParents(repoFile, repoBoundary);
             for (const dir of pruned) {
               log.push(`PRUNE-REPO ${change.rootName}/${dir}`);
@@ -221,7 +223,55 @@ async function snapshotForDefer(
 }
 
 /**
- * Walk the parent directories of `absFile` upward, removing each that is now
+ * Pick the boundary directory for a pruning walk, honoring the root's
+ * `pruneEmptyDirs` setting:
+ *
+ *   - `undefined` / `false` / `[]`: no pruning → returns `null`.
+ *   - `true`: prune up to the root → returns the root side absolute path.
+ *   - `string[]`: each entry is a sub-path relative to the root side. The
+ *     deleted file must sit under one of those sub-paths; the longest
+ *     matching sub-path wins (so nested sub-paths can refine an outer one).
+ *     Returns the resolved absolute boundary, or `null` if no sub-path
+ *     covers this file.
+ *
+ * `rootSideAbs` is the absolute path of either `rootDef.local` or
+ * `cwd + rootDef.repo` depending on which side is being deleted. The
+ * sub-paths are interpreted symmetrically against whichever side we're
+ * called from, so the same manifest setting governs both sides.
+ */
+export function resolvePruneBoundary(
+  absFile: string,
+  rootSideAbs: string,
+  setting: boolean | string[] | undefined,
+): string | null {
+  if (!setting) {
+    return null;
+  }
+  const rootResolved = resolve(rootSideAbs);
+  if (setting === true) {
+    return rootResolved;
+  }
+  if (!Array.isArray(setting) || setting.length === 0) {
+    return null;
+  }
+  const fileResolved = resolve(absFile);
+  let best: string | null = null;
+  for (const sub of setting) {
+    const candidate = resolve(rootResolved, sub);
+    // Boundary must live inside the root (or BE the root) and must be a
+    // strict ancestor of the file (not the file itself).
+    const insideRoot = candidate === rootResolved || candidate.startsWith(rootResolved + sep);
+    if (!insideRoot) continue;
+    if (fileResolved === candidate) continue;
+    if (!fileResolved.startsWith(candidate + sep)) continue;
+    if (best === null || candidate.length > best.length) {
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+/**
  * empty, and stop at the first non-empty directory or when we hit
  * `rootBoundary`. The boundary directory itself is NEVER removed: roots are
  * structural anchors and removing them would invalidate the manifest mapping.

@@ -156,17 +156,43 @@ export function defaultAction(change: FileChange): ResolvedAction {
   return "skip";
 }
 
+/**
+ * True when a delete row's path falls under the root's pruneEmptyDirs
+ * boundary, so the TUI knows whether to show the "(may prune empty parents)"
+ * annotation. Sub-path entries are matched as literal path prefixes, mirroring
+ * `resolvePruneBoundary` in apply.ts.
+ */
+function relPathUnderPruneBoundary(
+  relPath: string,
+  setting: true | string[] | undefined,
+): boolean {
+  if (!setting) return false;
+  if (setting === true) return true;
+  const rel = relPath.replace(/\\/g, "/");
+  for (const sub of setting) {
+    if (!sub) continue;
+    if (rel === sub) continue;
+    if (rel.startsWith(sub + "/")) return true;
+  }
+  return false;
+}
+
 export function initialState(
   changes: FileChange[],
   viewport: Viewport,
   deferred: Record<string, { reason: string; capturedAt: string }> = {},
   manifest?: Manifest,
 ): AppState {
-  const pruneRoots = new Set<string>();
+  const pruneSettings = new Map<string, true | string[]>();
   if (manifest) {
     for (const r of manifest.roots) {
-      if (r.pruneEmptyDirs) {
-        pruneRoots.add(r.repo);
+      if (r.pruneEmptyDirs === true) {
+        pruneSettings.set(r.repo, true);
+      } else if (Array.isArray(r.pruneEmptyDirs) && r.pruneEmptyDirs.length > 0) {
+        pruneSettings.set(
+          r.repo,
+          r.pruneEmptyDirs.map((s) => s.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "")),
+        );
       }
     }
   }
@@ -175,10 +201,12 @@ export function initialState(
     const isDeferred = !!deferred[stateKey];
     const action: ResolvedAction = isDeferred ? "defer" : defaultAction(change);
     const isDelete = action === "delete-local" || action === "delete-repo";
+    const setting = pruneSettings.get(change.rootName);
+    const pruneHint = isDelete && relPathUnderPruneBoundary(change.relativePath, setting) ? true : undefined;
     return {
       change,
       action,
-      pruneHint: isDelete && pruneRoots.has(change.rootName) ? true : undefined,
+      pruneHint,
     };
   });
   return {

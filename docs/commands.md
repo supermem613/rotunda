@@ -33,7 +33,7 @@ Add a file or directory path to tracking, copy matching local files into the rep
 **Synopsis:**
 
 ```
-rotunda add <path> [--prune-empty-dirs] [--no-prune-empty-dirs]
+rotunda add <path> [--prune-empty-dirs [sub-path]]... [--no-prune-empty-dirs]
 ```
 
 **Arguments:**
@@ -46,8 +46,8 @@ rotunda add <path> [--prune-empty-dirs] [--no-prune-empty-dirs]
 
 | Option | Description |
 |--------|-------------|
-| `--prune-empty-dirs`    | Set `pruneEmptyDirs=true` on the matching (or newly created) root. Future syncs will remove empty parent directories on both sides after deletes. See [`pruneEmptyDirs`](manifest.md#pruning-empty-directories). |
-| `--no-prune-empty-dirs` | Set `pruneEmptyDirs=false` on the matching root (default behavior — empty parents are left in place). |
+| `--prune-empty-dirs [path]` | Set `pruneEmptyDirs` on the matching (or newly created) root. With no value: prune the whole root. Pass a sub-path (repeatable) to scope pruning to that subtree, e.g. `--prune-empty-dirs skills --prune-empty-dirs cache`. See [`pruneEmptyDirs`](manifest.md#pruning-empty-directories). |
+| `--no-prune-empty-dirs` | Clear `pruneEmptyDirs` on the matching root (default behavior — empty parents are left in place). |
 
 If neither flag is passed, the field is left as-is on existing roots and omitted (default false) on newly created roots.
 
@@ -362,7 +362,7 @@ Edit a `SyncRoot`'s structural settings in `rotunda.json` (no file copy/delete, 
 **Synopsis:**
 
 ```
-rotunda set <root> [--prune-empty-dirs] [--no-prune-empty-dirs]
+rotunda set <root> [--prune-empty-dirs [path]]... [--no-prune-empty-dirs]
 ```
 
 **Arguments:**
@@ -375,10 +375,10 @@ rotunda set <root> [--prune-empty-dirs] [--no-prune-empty-dirs]
 
 | Option | Description |
 |--------|-------------|
-| `--prune-empty-dirs`    | Set `pruneEmptyDirs=true` on the root. Future syncs will remove empty parent directories on both sides after deletes. |
-| `--no-prune-empty-dirs` | Clear `pruneEmptyDirs` from the root (back to default false — empty parents are left in place). |
+| `--prune-empty-dirs [path]` | Set `pruneEmptyDirs` on the root. With no value: `true` (whole root is one boundary). Pass a sub-path to scope pruning to that subtree. Repeat the flag to add multiple sub-paths, e.g. `--prune-empty-dirs skills --prune-empty-dirs cache`. |
+| `--no-prune-empty-dirs` | Clear `pruneEmptyDirs` from the root (back to default — empty parents are left in place). |
 
-At least one settings flag is required. The command no-ops cleanly if the root already matches the requested value.
+At least one settings flag is required. The command no-ops cleanly if the root already matches the requested value. Sub-path lists are compared in order (replace semantics, not merge): passing a new list overwrites the existing one.
 
 **What it does:**
 
@@ -398,8 +398,10 @@ At least one settings flag is required. The command no-ops cleanly if the root a
 **Examples:**
 
 ```bash
-rotunda set claude-config --prune-empty-dirs
-rotunda set claude-config --no-prune-empty-dirs
+rotunda set claude   --prune-empty-dirs                       # whole-root pruning
+rotunda set copilot  --prune-empty-dirs skills                # scope to one sub-path
+rotunda set copilot  --prune-empty-dirs skills --prune-empty-dirs extensions/cache
+rotunda set claude   --no-prune-empty-dirs                    # turn off
 ```
 
 ---

@@ -34,15 +34,31 @@ program
 
 // Commands are registered in alphabetical order so `rotunda --help` lists
 // them alphabetically (commander preserves registration order in help).
+// Collector for `--prune-empty-dirs [path]`: each invocation either
+// flips into boolean-true mode (no value) or appends a sub-path. Repeated
+// invocations accumulate into an array. `--no-prune-empty-dirs` is wired
+// separately and sets the option to `false` directly.
+function collectPruneEmptyDirs(value: string | undefined, prev: unknown): boolean | string[] {
+  if (typeof value !== "string" || value === "") {
+    // Flag given with no value. If we already started a list, leave it; otherwise mark true.
+    return Array.isArray(prev) ? (prev as string[]) : true;
+  }
+  if (Array.isArray(prev)) {
+    return [...(prev as string[]), value];
+  }
+  return [value];
+}
+
 program
   .command("add")
   .description("Add a file or directory path to rotunda tracking, creating a root if needed")
   .argument("<path>", "Path to the file or directory to start tracking")
   .option(
-    "--prune-empty-dirs",
-    "Set pruneEmptyDirs=true on the matching root (removes empty parent dirs after deletes on sync)",
+    "--prune-empty-dirs [path]",
+    "Set pruneEmptyDirs on the matching root. No value = whole root; pass a sub-path (repeatable) to scope to that subtree.",
+    collectPruneEmptyDirs,
   )
-  .option("--no-prune-empty-dirs", "Set pruneEmptyDirs=false on the matching root (default)")
+  .option("--no-prune-empty-dirs", "Clear pruneEmptyDirs on the matching root (default)")
   .action(addCommand);
 
 program
@@ -120,10 +136,11 @@ program
   .description("Edit a SyncRoot's settings in rotunda.json (no file copy/delete)")
   .argument("<root>", "Name of the root in rotunda.json to edit")
   .option(
-    "--prune-empty-dirs",
-    "Set pruneEmptyDirs=true (removes empty parent dirs after deletes on sync)",
+    "--prune-empty-dirs [path]",
+    "Set pruneEmptyDirs. No value = whole root; pass a sub-path (repeatable) to scope to that subtree.",
+    collectPruneEmptyDirs,
   )
-  .option("--no-prune-empty-dirs", "Clear pruneEmptyDirs (back to default false)")
+  .option("--no-prune-empty-dirs", "Clear pruneEmptyDirs (back to default off)")
   .action(setCommand);
 
 program

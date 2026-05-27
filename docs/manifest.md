@@ -50,7 +50,7 @@ Each entry in the `roots` array maps a local directory on your machine to a dire
 | `repo`    | `string`   | Yes      | —       | Relative path within the repository (e.g., `".claude"`).   |
 | `include` | `string[]` | Yes      | —       | Glob patterns for files to include. An empty array `[]` means include everything not excluded. |
 | `exclude` | `string[]` | Yes      | —       | Glob patterns for files to exclude from this root.         |
-| `pruneEmptyDirs` | `boolean` | No | `false` | When `true`, after a file is deleted from this root, rotunda removes any parent directories that became empty, walking upward until it hits a non-empty directory or the root itself. Applies to both local and repo sides. See [Pruning Empty Directories](#pruning-empty-directories). |
+| `pruneEmptyDirs` | `boolean \| string[]` | No | `false` | Controls cleanup of empty parent directories after deletes in this root.<br>• `false`/omitted: no pruning.<br>• `true`: prune any empty parent up to the root.<br>• `string[]`: prune only when the deleted file lives under one of these sub-paths; the walk stops at the matching sub-path (longest prefix wins). Applies to both local and repo sides. See [Pruning Empty Directories](#pruning-empty-directories). |
 
 ### Path Resolution
 
@@ -117,7 +117,9 @@ If you need to make larger structural edits than that, edit `rotunda.json` direc
 
 By default, rotunda only deletes files. When a delete leaves behind an empty directory hierarchy, those empty directories stay on disk and inside the repo working tree — git does not track empty directories, but the local copy still shows them.
 
-Set `pruneEmptyDirs: true` on a root to make rotunda clean those up automatically:
+`pruneEmptyDirs` controls automatic cleanup:
+
+**Whole-root pruning** (`true`): prune any empty parent up to (but not including) the root itself.
 
 ```json
 {
@@ -130,25 +132,44 @@ Set `pruneEmptyDirs: true` on a root to make rotunda clean those up automaticall
 }
 ```
 
+**Scoped sub-path pruning** (`string[]`): prune only when the deleted file lives under one of the listed sub-paths. This lets a single root mix prune-friendly subtrees with subtrees that must keep their directory shape:
+
+```json
+{
+  "name": "copilot",
+  "local": "~/.copilot",
+  "repo": ".copilot",
+  "include": ["**/*"],
+  "exclude": [],
+  "pruneEmptyDirs": ["skills", "extensions/cache"]
+}
+```
+
+In the example above, deleting `~/.copilot/skills/foo/bar.md` may prune `skills/foo` (and `skills` itself stays as the boundary), but deleting `~/.copilot/prompts/old.md` does not prune anything — `prompts` is outside the boundary list.
+
 Behavior:
 
-- After every successful `delete-local` or `delete-repo` op on a root with `pruneEmptyDirs: true`, rotunda walks the file's parent directories upward and removes each one that is now empty.
-- The walk stops at the first non-empty directory or at the root boundary (`local` for local-side deletes, `repo` for repo-side deletes).
-- The root directory itself is never removed.
+- After every successful `delete-local` or `delete-repo` op on a root with `pruneEmptyDirs` enabled, rotunda walks the file's parent directories upward and removes each one that is now empty.
+- For `true`, the walk stops at the root boundary (`local` for local-side deletes, `repo` for repo-side deletes).
+- For `string[]`, the walk stops at the longest matching sub-path. If no sub-path covers the file, the file is deleted but no pruning happens.
+- Sub-path entries are literal path segments (not globs). They are interpreted symmetrically against both `local` and `repo`.
+- The root directory itself is never removed, even with `true`.
 - Each pruned directory is logged as `PRUNE-LOCAL <root>/<dir>` or `PRUNE-REPO <root>/<dir>`, interleaved with the file ops in the apply output. A summary line `Pruned N empty dirs (L local, R repo).` is printed at the end of sync.
-- The sync TUI tags delete rows under a prune-enabled root with `(may prune empty parents)` so you know the apply pass may also collapse empty parents — exact directories are only known after apply runs.
+- The sync TUI tags delete rows that fall under a prune boundary with `(may prune empty parents)` — exact pruned directories are only known after apply runs.
 
 Default is `false` to preserve existing behavior for tools that rely on an empty directory continuing to exist.
 
 You can toggle this field from the CLI without hand-editing `rotunda.json`:
 
 ```bash
-rotunda add ~/.claude/skills --prune-empty-dirs   # set on the matching/new root in the same step
-rotunda set claude --prune-empty-dirs             # toggle on an existing root
-rotunda set claude --no-prune-empty-dirs          # turn it back off
+rotunda add ~/.claude/skills --prune-empty-dirs                       # boolean true (whole root)
+rotunda set claude --prune-empty-dirs                                 # boolean true
+rotunda set copilot --prune-empty-dirs skills                         # scope to one sub-path
+rotunda set copilot --prune-empty-dirs skills --prune-empty-dirs cache  # multiple sub-paths
+rotunda set claude --no-prune-empty-dirs                              # turn it back off
 ```
 
-See [`rotunda add`](commands.md#rotunda-add) and [`rotunda set`](commands.md#rotunda-set) for details.
+Repeating `--prune-empty-dirs <path>` accumulates a sub-path list. Passing `--prune-empty-dirs` with no value sets it to `true` (whole root). `--no-prune-empty-dirs` clears the field. See [`rotunda add`](commands.md#rotunda-add) and [`rotunda set`](commands.md#rotunda-set) for details.
 
 
 ### Global Excludes

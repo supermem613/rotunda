@@ -130,8 +130,14 @@ function renderPreview(plan: TrackingPlan, cwd: string): void {
   }
 
   if (plan.pruneEmptyDirsChange !== undefined) {
-    const verb = plan.pruneEmptyDirsChange ? chalk.green("set") : chalk.yellow("unset");
-    console.log(`    ${verb} pruneEmptyDirs = ${plan.pruneEmptyDirsChange}`);
+    const v = plan.pruneEmptyDirsChange;
+    if (v === false) {
+      console.log(`    ${chalk.yellow("unset")} pruneEmptyDirs`);
+    } else if (v === true) {
+      console.log(`    ${chalk.green("set")} pruneEmptyDirs = true`);
+    } else {
+      console.log(`    ${chalk.green("set")} pruneEmptyDirs = [${v.join(", ")}]`);
+    }
   }
 
   if (plan.repoOnlyMatches.length > 0) {
@@ -157,7 +163,7 @@ function renderPreview(plan: TrackingPlan, cwd: string): void {
 export async function runIncludeLifecycleCommand(
   kind: TrackingOperation,
   pathInput: string,
-  options: { pruneEmptyDirs?: boolean } = {},
+  options: { pruneEmptyDirs?: boolean | string[] } = {},
 ): Promise<void> {
   const invocationCwd = process.cwd();
   const { cwd, manifest } = loadRepoContext();

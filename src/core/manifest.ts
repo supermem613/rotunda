@@ -23,7 +23,7 @@ const SyncRootSchema = z.object({
   repo: z.string().min(1, "repo path must be non-empty"),
   include: z.array(z.string()),
   exclude: z.array(z.string()),
-  pruneEmptyDirs: z.boolean().optional(),
+  pruneEmptyDirs: z.union([z.boolean(), z.array(z.string().min(1))]).optional(),
 });
 
 const MachineRootOverrideSchema = z.object({

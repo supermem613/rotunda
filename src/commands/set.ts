@@ -8,15 +8,17 @@ import {
 import { loadRepoContext } from "../core/repo-context.js";
 import { withLock } from "../utils/lock.js";
 import { gitCommitAndPush, gitPull, isGitRepo } from "../utils/git.js";
+import { pruneSettingsEqual } from "../core/include-glob.js";
 
 export interface SetRootOptions {
   /**
-   * Tri-state from commander's `--prune-empty-dirs` / `--no-prune-empty-dirs`:
+   * Tri-state from commander, accumulated by the prune collector parser:
    *   - undefined: flag absent, do not touch the field
-   *   - true: set to true
-   *   - false: clear the field (back to default-false)
+   *   - true: `--prune-empty-dirs` alone → boundary is the whole root
+   *   - false: `--no-prune-empty-dirs` → clear the field
+   *   - string[]: one or more `--prune-empty-dirs <sub-path>` invocations
    */
-  pruneEmptyDirs?: boolean;
+  pruneEmptyDirs?: boolean | string[];
 }
 
 /**
@@ -114,18 +116,41 @@ function hasAnyChange(options: SetRootOptions): boolean {
   return options.pruneEmptyDirs !== undefined;
 }
 
+function normalizeRequest(
+  requested: boolean | string[],
+): boolean | string[] {
+  if (typeof requested === "boolean") {
+    return requested;
+  }
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of requested) {
+    const norm = raw.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "").trim();
+    if (!norm || seen.has(norm)) continue;
+    seen.add(norm);
+    out.push(norm);
+  }
+  return out.length === 0 ? false : out;
+}
+
+function formatPrune(v: boolean | string[] | undefined): string {
+  if (v === undefined || v === false) return "false";
+  if (v === true) return "true";
+  return `[${v.join(", ")}]`;
+}
+
 function planChanges(
   root: ManifestDocument["roots"][number],
   options: SetRootOptions,
 ): FieldChange[] {
   const out: FieldChange[] = [];
   if (options.pruneEmptyDirs !== undefined) {
-    const current = root.pruneEmptyDirs ?? false;
-    if (current !== options.pruneEmptyDirs) {
+    const requested = normalizeRequest(options.pruneEmptyDirs);
+    if (!pruneSettingsEqual(root.pruneEmptyDirs, requested === false ? undefined : requested)) {
       out.push({
         field: "pruneEmptyDirs",
-        from: String(current),
-        to: String(options.pruneEmptyDirs),
+        from: formatPrune(root.pruneEmptyDirs),
+        to: formatPrune(requested === false ? undefined : requested),
       });
     }
   }
@@ -136,10 +161,13 @@ function applyChanges(
   root: ManifestDocument["roots"][number],
   options: SetRootOptions,
 ): void {
-  if (options.pruneEmptyDirs === true) {
-    root.pruneEmptyDirs = true;
-  } else if (options.pruneEmptyDirs === false) {
-    delete root.pruneEmptyDirs;
+  if (options.pruneEmptyDirs !== undefined) {
+    const normalized = normalizeRequest(options.pruneEmptyDirs);
+    if (normalized === false) {
+      delete root.pruneEmptyDirs;
+    } else {
+      root.pruneEmptyDirs = normalized;
+    }
   }
 }
 
@@ -153,3 +181,4 @@ function renderPreview(rootName: string, changes: FieldChange[]): void {
   }
   console.log();
 }
+
