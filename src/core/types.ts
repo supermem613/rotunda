@@ -9,6 +9,24 @@ export interface SyncRoot {
   repo: string; // relative path within the repo
   include: string[];
   exclude: string[];
+  /**
+   * Controls whether rotunda removes empty parent directories after deletes
+   * in this root, and where the prune walk stops.
+   *
+   *   - `false` / omitted (default): no pruning. Empty parents stay.
+   *   - `true`: prune any empty parent up to (but not including) the root
+   *     directory itself. Applies to both local and repo sides symmetrically.
+   *   - `string[]`: each entry is a sub-path relative to the root. A delete
+   *     only prunes if the file sits under one of these sub-paths, and the
+   *     walk stops at the matching sub-path (longest prefix wins). Use this
+   *     when you want a root with mixed semantics, e.g. prune under
+   *     `skills/` but leave the rest of the root alone.
+   *
+   * Sub-path strings are literal path segments (not globs). They are
+   * resolved against both `local` and `repo` so the behavior stays
+   * symmetric across sides.
+   */
+  pruneEmptyDirs?: boolean | string[];
 }
 
 /** Per-root override within a machine override. */

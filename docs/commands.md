@@ -17,6 +17,7 @@ rotunda <command> [options]
 | `rotunda push`     | Push local changes to the repo                       |
 | `rotunda pull`     | Pull repo changes to local                           |
 | `rotunda remove`   | Stop tracking a file or directory path, delete matching repo files, commit/push |
+| `rotunda set`      | Edit a SyncRoot's settings in `rotunda.json` (no file copy/delete) |
 | `rotunda sync`     | Bidirectional sync with conflict resolution          |
 | `rotunda doctor`   | Structural health check (with `--fix` for LLM repair)|
 | `rotunda list`     | Show manifest roots and captured files               |
@@ -32,7 +33,7 @@ Add a file or directory path to tracking, copy matching local files into the rep
 **Synopsis:**
 
 ```
-rotunda add <path>
+rotunda add <path> [--prune-empty-dirs [sub-path]]... [--no-prune-empty-dirs]
 ```
 
 **Arguments:**
@@ -40,6 +41,15 @@ rotunda add <path>
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `path`   | Yes      | Existing local file or directory to start tracking. Supports `~`, absolute paths, and relative paths from your current shell directory. |
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--prune-empty-dirs [path]` | Set `pruneEmptyDirs` on the matching (or newly created) root. With no value: prune the whole root. Pass a sub-path (repeatable) to scope pruning to that subtree, e.g. `--prune-empty-dirs skills --prune-empty-dirs cache`. See [`pruneEmptyDirs`](manifest.md#pruning-empty-directories). |
+| `--no-prune-empty-dirs` | Clear `pruneEmptyDirs` on the matching root (default behavior — empty parents are left in place). |
+
+If neither flag is passed, the field is left as-is on existing roots and omitted (default false) on newly created roots.
 
 **What it does:**
 
@@ -342,6 +352,57 @@ rotunda remove <path>
   - remove an exact include
   - add an exclude under a broader include
   - remove the whole root when you target the root directory itself
+
+---
+
+## `rotunda set`
+
+Edit a `SyncRoot`'s structural settings in `rotunda.json` (no file copy/delete, no scope change). Use this when you want to toggle per-root behavior on an already-tracked root.
+
+**Synopsis:**
+
+```
+rotunda set <root> [--prune-empty-dirs [path]]... [--no-prune-empty-dirs]
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `root`   | Yes      | The `name` of the root in `rotunda.json` to edit. Use `rotunda list` to see available roots. |
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--prune-empty-dirs [path]` | Set `pruneEmptyDirs` on the root. With no value: `true` (whole root is one boundary). Pass a sub-path to scope pruning to that subtree. Repeat the flag to add multiple sub-paths, e.g. `--prune-empty-dirs skills --prune-empty-dirs cache`. |
+| `--no-prune-empty-dirs` | Clear `pruneEmptyDirs` from the root (back to default — empty parents are left in place). |
+
+At least one settings flag is required. The command no-ops cleanly if the root already matches the requested value. Sub-path lists are compared in order (replace semantics, not merge): passing a new list overwrites the existing one.
+
+**What it does:**
+
+1. Automatically pulls the latest changes from the git remote when the dotfiles repo is a git repo.
+2. Loads `rotunda.json` and finds the named root.
+3. Computes which fields actually change. Exits early with a message if there is nothing to do.
+4. Shows a preview of the field changes.
+5. Writes the updated `rotunda.json`.
+6. Creates a git commit (`rotunda set — <root> (<fields>)`) and pushes it.
+
+**Notes:**
+
+- `set` only edits root-level settings. It never copies or deletes tracked files. To change which files a root tracks, use `rotunda add` / `rotunda remove`.
+- For the same setting, you can also pass `--prune-empty-dirs` to `rotunda add` and the toggle will be applied atomically alongside the include change.
+- See [`pruneEmptyDirs`](manifest.md#pruning-empty-directories) for the full semantics.
+
+**Examples:**
+
+```bash
+rotunda set claude   --prune-empty-dirs                       # whole-root pruning
+rotunda set copilot  --prune-empty-dirs skills                # scope to one sub-path
+rotunda set copilot  --prune-empty-dirs skills --prune-empty-dirs extensions/cache
+rotunda set claude   --no-prune-empty-dirs                    # turn off
+```
 
 ---
 

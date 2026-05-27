@@ -68,6 +68,16 @@ export interface TrackingPlan {
     local?: string;
     repo?: string;
   };
+  /**
+   * Requested change to the target root's `pruneEmptyDirs` setting:
+   *   - `undefined` — user didn't pass the flag, leave the field alone
+   *   - `true` / `false` — user requested a boolean value
+   *   - `string[]` — user requested a sub-path boundary list
+   *
+   * Surfaced in the preview as a separate line. Applied to `nextManifest`
+   * by `planTrackingPathChange` so `applyTrackingPlan` writes one document.
+   */
+  pruneEmptyDirsChange?: boolean | string[];
   nextManifest: ManifestDocument;
   repoCopies: PlannedRepoCopy[];
   repoDeletes: PlannedRepoDelete[];
@@ -317,6 +327,7 @@ export async function planTrackingPathChange(
   target: TrackingTarget,
   kind: TrackingOperation,
   newRootName?: string,
+  pruneEmptyDirsChange?: boolean | string[],
 ): Promise<TrackingPlan> {
   const match = findMatchingRootForTarget(manifest, manifestDocument, target.absolutePath);
   const nextManifest = structuredClone(manifestDocument);
@@ -590,6 +601,12 @@ export async function planTrackingPathChange(
     rootRepo,
     inferredPattern,
     manifestMutation,
+    pruneEmptyDirsChange: applyPruneChangeToNextManifest(
+      nextManifest,
+      rootName,
+      pruneEmptyDirsChange,
+      manifestMutation.kind,
+    ),
     nextManifest,
     repoCopies,
     repoDeletes,
@@ -651,4 +668,96 @@ export async function applyTrackingPlan(
     log,
     state,
   };
+}
+
+/**
+ * Mutate `nextManifest` in place to apply the requested `pruneEmptyDirs`
+ * change to the named root, and return what actually changed so the preview
+ * can show it.
+ *
+ * Returns `undefined` when no change was requested OR when the change is a
+ * no-op (e.g. user passed `--prune-empty-dirs` but the root already has it).
+ * This keeps the preview honest — we only show the line when something
+ * actually differs.
+ *
+ * Replace semantics: passing an array overwrites any prior boolean or array,
+ * passing `false` clears the field entirely. We never merge.
+ *
+ * When the mutation is `remove-root`, the target root is gone from
+ * `nextManifest`, so any requested change is moot and we return undefined.
+ */
+function applyPruneChangeToNextManifest(
+  nextManifest: ManifestDocument,
+  rootName: string,
+  requested: boolean | string[] | undefined,
+  mutationKind: ManifestMutationKind,
+): boolean | string[] | undefined {
+  if (requested === undefined) {
+    return undefined;
+  }
+  if (mutationKind === "remove-root") {
+    return undefined;
+  }
+  const root = nextManifest.roots.find((r) => r.name === rootName);
+  if (!root) {
+    return undefined;
+  }
+  const normalized = normalizePruneRequest(requested);
+  const current = root.pruneEmptyDirs;
+  if (pruneSettingsEqual(current, normalized)) {
+    return undefined;
+  }
+  if (normalized === false) {
+    delete root.pruneEmptyDirs;
+  } else {
+    root.pruneEmptyDirs = normalized;
+  }
+  return normalized;
+}
+
+/**
+ * Normalize an array request: dedupe, drop empties, normalize separators.
+ * An empty resulting array collapses to `false` (= clear the field) so
+ * `--prune-empty-dirs ""` doesn't leave a confusing `[]` in the manifest.
+ */
+function normalizePruneRequest(
+  requested: boolean | string[],
+): boolean | string[] {
+  if (typeof requested === "boolean") {
+    return requested;
+  }
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of requested) {
+    const norm = raw.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "").trim();
+    if (!norm) continue;
+    if (seen.has(norm)) continue;
+    seen.add(norm);
+    out.push(norm);
+  }
+  return out.length === 0 ? false : out;
+}
+
+/**
+ * Structural equality between two pruneEmptyDirs settings. Treats undefined
+ * and false as equivalent ("off"). Arrays compare element-wise in order
+ * because the manifest preserves order.
+ */
+export function pruneSettingsEqual(
+  a: boolean | string[] | undefined,
+  b: boolean | string[] | undefined,
+): boolean {
+  const norm = (v: boolean | string[] | undefined): boolean | string[] => {
+    if (v === undefined || v === false) return false;
+    return v;
+  };
+  const na = norm(a);
+  const nb = norm(b);
+  if (na === false && nb === false) return true;
+  if (na === true && nb === true) return true;
+  if (Array.isArray(na) && Array.isArray(nb)) {
+    if (na.length !== nb.length) return false;
+    return na.every((v, i) => v === nb[i]);
+  }
+  return false;
 }

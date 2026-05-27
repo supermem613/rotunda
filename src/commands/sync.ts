@@ -7,7 +7,7 @@ import { withLock } from "../utils/lock.js";
 import { isGitRepo, gitPull, gitCommitAndPush } from "../utils/git.js";
 import { runTui } from "../tui/screen.js";
 import { initialState, type Row } from "../tui/state.js";
-import { planApply, executeApply } from "../sync/apply.js";
+import { planApply, executeApply, sweepAllConfiguredRoots } from "../sync/apply.js";
 
 export async function syncCommand(options: { yes?: boolean }): Promise<void> {
   const ctx = loadRepoContext();
@@ -32,9 +32,19 @@ export async function syncCommand(options: { yes?: boolean }): Promise<void> {
     }
 
     const state = await loadState(cwd);
+
+    // Sweep empty dirs first so the result is visible even when there are no
+    // file changes to apply. Empty dirs aren't tracked by git, so this never
+    // touches the index.
+    const sweepLog = await sweepAllConfiguredRoots(manifest, cwd);
+    for (const line of sweepLog) {
+      console.log("  " + line);
+    }
+
     const allChanges = await computeAllChanges(manifest, cwd, state);
 
     if (allChanges.length === 0) {
+      reportPruneSummary(sweepLog);
       console.log(chalk.green("✓") + " Everything in sync. No changes detected.");
       return;
     }
@@ -57,7 +67,7 @@ export async function syncCommand(options: { yes?: boolean }): Promise<void> {
       rowsToApply = result.state.rows;
     } else {
       // Headless: build engine-default rows and refuse to apply when conflicts exist.
-      const initial = initialState(allChanges, { cols: 80, rows: 24 }, state.deferred);
+      const initial = initialState(allChanges, { cols: 80, rows: 24 }, state.deferred, manifest);
       const conflicts = initial.rows.filter((r) => r.action === "conflict");
       if (conflicts.length > 0) {
         console.log(chalk.magenta(`  ⚠ ${conflicts.length} unresolved conflict(s):`));
@@ -72,6 +82,7 @@ export async function syncCommand(options: { yes?: boolean }): Promise<void> {
 
     const plan = planApply(rowsToApply);
     if (plan.ops.length === 0) {
+      reportPruneSummary(sweepLog);
       console.log(chalk.dim("  Nothing to apply."));
       return;
     }
@@ -80,6 +91,8 @@ export async function syncCommand(options: { yes?: boolean }): Promise<void> {
     for (const line of exec.log) {
       console.log("  " + line);
     }
+
+    reportPruneSummary([...sweepLog, ...exec.log]);
 
     await saveState(cwd, exec.state);
 
@@ -97,4 +110,17 @@ export async function syncCommand(options: { yes?: boolean }): Promise<void> {
 
     console.log(chalk.green("  ✓ Sync complete."));
   });
+}
+
+function reportPruneSummary(log: string[]): void {
+  const pruneLocal = log.filter((l) => l.startsWith("PRUNE-LOCAL ")).length;
+  const pruneRepo = log.filter((l) => l.startsWith("PRUNE-REPO ")).length;
+  const pruneTotal = pruneLocal + pruneRepo;
+  if (pruneTotal === 0) return;
+  console.log(
+    chalk.dim(
+      `  Pruned ${pruneTotal} empty dir${pruneTotal === 1 ? "" : "s"} ` +
+        `(${pruneLocal} local, ${pruneRepo} repo).`,
+    ),
+  );
 }
