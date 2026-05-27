@@ -11,7 +11,7 @@
  * after the apply gate has verified there are no unresolved-conflict rows.
  */
 
-import { copyFile, mkdir, rm, rmdir, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, rm, rmdir, writeFile } from "node:fs/promises";
 import { join, dirname, relative, resolve, sep } from "node:path";
 import type { Manifest, SyncState, FileChange } from "../core/types.js";
 import { hashContent } from "../utils/hash.js";
@@ -189,7 +189,118 @@ export async function executeApply(
     }
   }
 
+  // End-of-apply sweep: for every root with pruneEmptyDirs enabled, walk each
+  // boundary on both sides bottom-up and rmdir any empty subtree the user (or
+  // another tool) may have left behind. This is what makes pruneEmptyDirs feel
+  // like a state — not just a reaction to file deletes in this run.
+  for (const rootDef of manifest.roots) {
+    if (!rootDef.pruneEmptyDirs) continue;
+    const boundaries = boundaryAbsList(rootDef.pruneEmptyDirs);
+    for (const sub of boundaries) {
+      const localBoundary = resolve(join(rootDef.local, sub));
+      const repoBoundary = resolve(join(cwd, rootDef.repo, sub));
+      try {
+        const prunedLocal = await sweepEmptyDirsUnderBoundary(localBoundary);
+        for (const dir of prunedLocal) {
+          log.push(`PRUNE-LOCAL ${rootDef.repo}/${joinBoundaryRel(sub, dir)}`);
+        }
+      } catch {
+        // Sweep is best-effort; swallow.
+      }
+      try {
+        const prunedRepo = await sweepEmptyDirsUnderBoundary(repoBoundary);
+        for (const dir of prunedRepo) {
+          log.push(`PRUNE-REPO ${rootDef.repo}/${joinBoundaryRel(sub, dir)}`);
+        }
+      } catch {
+        // Sweep is best-effort; swallow.
+      }
+    }
+  }
+
   return { state, gitPaths, log };
+}
+
+/**
+ * Return the set of sub-paths to sweep for a root, relative to the root side.
+ * For `true`, the only boundary is the root itself (sub-path = ""). For a
+ * string list, each entry is its own boundary. Sub-paths are normalized so
+ * leading/trailing separators don't sneak through.
+ */
+function boundaryAbsList(setting: boolean | string[]): string[] {
+  if (setting === true) return [""];
+  if (!Array.isArray(setting)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of setting) {
+    const norm = raw.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "").trim();
+    if (!norm || seen.has(norm)) continue;
+    seen.add(norm);
+    out.push(norm);
+  }
+  return out;
+}
+
+/** Compose the log path "boundary-sub/inner" while collapsing empty pieces. */
+function joinBoundaryRel(sub: string, inner: string): string {
+  if (!sub) return inner;
+  if (!inner) return sub;
+  return `${sub}/${inner}`;
+}
+
+/**
+ * Walk the directory tree rooted at `boundary` and rmdir any empty subtree.
+ * The boundary directory itself is preserved even when it ends up empty —
+ * roots and explicit prune sub-paths are structural anchors users opted into.
+ *
+ * Returns the boundary-relative paths of removed directories, deepest-first,
+ * so the caller can stitch them into PRUNE-* log lines the same way the
+ * delete-driven pruneEmptyParents does.
+ *
+ * Robustness:
+ *   - Missing boundary (ENOENT) returns []; the user may have configured a
+ *     sub-path that doesn't exist on this side yet, which is not an error.
+ *   - Per-dir readdir/rmdir failures are swallowed so one broken subtree
+ *     doesn't stop the rest of the sweep.
+ */
+export async function sweepEmptyDirsUnderBoundary(
+  boundary: string,
+): Promise<string[]> {
+  const removed: string[] = [];
+  const boundaryResolved = resolve(boundary);
+
+  async function visit(dir: string): Promise<void> {
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        await visit(join(dir, entry.name));
+      }
+    }
+    if (dir === boundaryResolved) return;
+    let after;
+    try {
+      after = await readdir(dir);
+    } catch {
+      return;
+    }
+    if (after.length === 0) {
+      try {
+        await rmdir(dir);
+        const rel = relative(boundaryResolved, dir).split(/[\\/]/).join("/");
+        if (rel) removed.push(rel);
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  await visit(boundaryResolved);
+  return removed;
 }
 
 function mustHash(h: string | undefined, side: "local" | "repo"): string {
