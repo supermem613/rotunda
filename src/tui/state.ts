@@ -166,13 +166,23 @@ function relPathUnderPruneBoundary(
   relPath: string,
   setting: true | string[] | undefined,
 ): boolean {
-  if (!setting) return false;
-  if (setting === true) return true;
+  if (!setting) {
+    return false;
+  }
+  if (setting === true) {
+    return true;
+  }
   const rel = relPath.replace(/\\/g, "/");
   for (const sub of setting) {
-    if (!sub) continue;
-    if (rel === sub) continue;
-    if (rel.startsWith(sub + "/")) return true;
+    if (!sub) {
+      continue;
+    }
+    if (rel === sub) {
+      continue;
+    }
+    if (rel.startsWith(sub + "/")) {
+      return true;
+    }
   }
   return false;
 }

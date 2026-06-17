@@ -206,7 +206,9 @@ export async function sweepAllConfiguredRoots(
 ): Promise<string[]> {
   const log: string[] = [];
   for (const rootDef of manifest.roots) {
-    if (!rootDef.pruneEmptyDirs) continue;
+    if (!rootDef.pruneEmptyDirs) {
+      continue;
+    }
     const boundaries = boundaryAbsList(rootDef.pruneEmptyDirs);
     for (const sub of boundaries) {
       const localBoundary = resolve(join(rootDef.local, sub));
@@ -239,13 +241,19 @@ export async function sweepAllConfiguredRoots(
  * leading/trailing separators don't sneak through.
  */
 function boundaryAbsList(setting: boolean | string[]): string[] {
-  if (setting === true) return [""];
-  if (!Array.isArray(setting)) return [];
+  if (setting === true) {
+    return [""];
+  }
+  if (!Array.isArray(setting)) {
+    return [];
+  }
   const out: string[] = [];
   const seen = new Set<string>();
   for (const raw of setting) {
     const norm = raw.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "").trim();
-    if (!norm || seen.has(norm)) continue;
+    if (!norm || seen.has(norm)) {
+      continue;
+    }
     seen.add(norm);
     out.push(norm);
   }
@@ -254,8 +262,12 @@ function boundaryAbsList(setting: boolean | string[]): string[] {
 
 /** Compose the log path "boundary-sub/inner" while collapsing empty pieces. */
 function joinBoundaryRel(sub: string, inner: string): string {
-  if (!sub) return inner;
-  if (!inner) return sub;
+  if (!sub) {
+    return inner;
+  }
+  if (!inner) {
+    return sub;
+  }
   return `${sub}/${inner}`;
 }
 
@@ -292,7 +304,9 @@ export async function sweepEmptyDirsUnderBoundary(
         await visit(join(dir, entry.name));
       }
     }
-    if (dir === boundaryResolved) return;
+    if (dir === boundaryResolved) {
+      return;
+    }
     let after;
     try {
       after = await readdir(dir);
@@ -303,7 +317,9 @@ export async function sweepEmptyDirsUnderBoundary(
       try {
         await rmdir(dir);
         const rel = relative(boundaryResolved, dir).split(/[\\/]/).join("/");
-        if (rel) removed.push(rel);
+        if (rel) {
+          removed.push(rel);
+        }
       } catch {
         // ignore
       }
@@ -383,9 +399,15 @@ export function resolvePruneBoundary(
     // Boundary must live inside the root (or BE the root) and must be a
     // strict ancestor of the file (not the file itself).
     const insideRoot = candidate === rootResolved || candidate.startsWith(rootResolved + sep);
-    if (!insideRoot) continue;
-    if (fileResolved === candidate) continue;
-    if (!fileResolved.startsWith(candidate + sep)) continue;
+    if (!insideRoot) {
+      continue;
+    }
+    if (fileResolved === candidate) {
+      continue;
+    }
+    if (!fileResolved.startsWith(candidate + sep)) {
+      continue;
+    }
     if (best === null || candidate.length > best.length) {
       best = candidate;
     }
