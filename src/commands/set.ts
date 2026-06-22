@@ -126,7 +126,9 @@ function normalizeRequest(
   const out: string[] = [];
   for (const raw of requested) {
     const norm = raw.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "").trim();
-    if (!norm || seen.has(norm)) continue;
+    if (!norm || seen.has(norm)) {
+      continue;
+    }
     seen.add(norm);
     out.push(norm);
   }
@@ -134,8 +136,12 @@ function normalizeRequest(
 }
 
 function formatPrune(v: boolean | string[] | undefined): string {
-  if (v === undefined || v === false) return "false";
-  if (v === true) return "true";
+  if (v === undefined || v === false) {
+    return "false";
+  }
+  if (v === true) {
+    return "true";
+  }
   return `[${v.join(", ")}]`;
 }
 

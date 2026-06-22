@@ -6,7 +6,7 @@ Thank you for your interest in contributing to rotunda! This guide covers everyt
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) 20 or later
+- [Node.js](https://nodejs.org/) 22 or later
 - [Git](https://git-scm.com/)
 
 ### Getting Started

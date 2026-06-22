@@ -116,7 +116,9 @@ function reportPruneSummary(log: string[]): void {
   const pruneLocal = log.filter((l) => l.startsWith("PRUNE-LOCAL ")).length;
   const pruneRepo = log.filter((l) => l.startsWith("PRUNE-REPO ")).length;
   const pruneTotal = pruneLocal + pruneRepo;
-  if (pruneTotal === 0) return;
+  if (pruneTotal === 0) {
+    return;
+  }
   console.log(
     chalk.dim(
       `  Pruned ${pruneTotal} empty dir${pruneTotal === 1 ? "" : "s"} ` +

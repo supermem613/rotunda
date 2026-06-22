@@ -730,8 +730,12 @@ function normalizePruneRequest(
   const out: string[] = [];
   for (const raw of requested) {
     const norm = raw.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "").trim();
-    if (!norm) continue;
-    if (seen.has(norm)) continue;
+    if (!norm) {
+      continue;
+    }
+    if (seen.has(norm)) {
+      continue;
+    }
     seen.add(norm);
     out.push(norm);
   }
@@ -748,15 +752,23 @@ export function pruneSettingsEqual(
   b: boolean | string[] | undefined,
 ): boolean {
   const norm = (v: boolean | string[] | undefined): boolean | string[] => {
-    if (v === undefined || v === false) return false;
+    if (v === undefined || v === false) {
+      return false;
+    }
     return v;
   };
   const na = norm(a);
   const nb = norm(b);
-  if (na === false && nb === false) return true;
-  if (na === true && nb === true) return true;
+  if (na === false && nb === false) {
+    return true;
+  }
+  if (na === true && nb === true) {
+    return true;
+  }
   if (Array.isArray(na) && Array.isArray(nb)) {
-    if (na.length !== nb.length) return false;
+    if (na.length !== nb.length) {
+      return false;
+    }
     return na.every((v, i) => v === nb[i]);
   }
   return false;
