@@ -3,17 +3,39 @@ import { join } from "node:path";
 import { loadRepoContext } from "../core/repo-context.js";
 import { discoverFiles } from "../core/engine.js";
 
+interface ListedFile {
+  path: string;
+  inLocal: boolean;
+  inRepo: boolean;
+}
+
+interface RootInventory {
+  repo: string;
+  local: string;
+  include: string[];
+  exclude: string[];
+  files: ListedFile[];
+  counts: InventoryCounts;
+}
+
+interface InventoryCounts {
+  total: number;
+  synced: number;
+  localOnly: number;
+  repoOnly: number;
+}
+
 export async function listCommand(options: { local?: boolean; repo?: boolean }): Promise<void> {
   const { cwd, manifest } = loadRepoContext();
 
   const showLocal = !options.repo || options.local;  // default: show both
   const showRepo = !options.local || options.repo;
+  const roots: RootInventory[] = [];
 
   for (const root of manifest.roots) {
     const localDir = root.local;
     const repoDir = join(cwd, root.repo);
 
-    // Discover files on each side
     const [localFiles, repoFiles] = await Promise.all([
       showLocal
         ? discoverFiles(localDir, root.include, root.exclude, manifest.globalExclude)
@@ -23,90 +45,126 @@ export async function listCommand(options: { local?: boolean; repo?: boolean }):
         : Promise.resolve(new Map<string, string>()),
     ]);
 
-    // Merge all paths
     const allPaths = new Set([...localFiles.keys(), ...repoFiles.keys()]);
-    const sorted = [...allPaths].sort();
+    const files = [...allPaths].sort().map((p) => ({
+      path: p,
+      inLocal: localFiles.has(p),
+      inRepo: repoFiles.has(p),
+    }));
 
-    // Header
-    console.log();
-    console.log(chalk.bold.cyan(`  ┌─ ${root.repo} `));
-    console.log(chalk.dim(`  │  local: ${root.local}`));
-    console.log(chalk.dim(`  │  repo:  ${root.repo}`));
-    console.log(chalk.dim(`  │  include: ${root.include.join(", ")}`));
-    console.log(chalk.dim(`  │  exclude: ${root.exclude.slice(0, 5).join(", ")}${root.exclude.length > 5 ? ` (+${root.exclude.length - 5} more)` : ""}`));
-    console.log(chalk.dim(`  │`));
-
-    if (sorted.length === 0) {
-      console.log(chalk.dim(`  │  (no files captured)`));
-      console.log(chalk.cyan(`  └─ 0 files`));
-      continue;
-    }
-
-    // Group by top-level directory for readability
-    const groups = new Map<string, { path: string; inLocal: boolean; inRepo: boolean }[]>();
-    for (const p of sorted) {
-      const topDir = p.includes("/") ? p.split("/")[0] : "(root)";
-      const group = groups.get(topDir) ?? [];
-      group.push({
-        path: p,
-        inLocal: localFiles.has(p),
-        inRepo: repoFiles.has(p),
-      });
-      groups.set(topDir, group);
-    }
-
-    for (const [dir, files] of groups) {
-      console.log(chalk.dim(`  │`));
-      console.log(chalk.bold(`  │  ${dir}/`));
-
-      for (const f of files) {
-        const name = f.path.includes("/") ? f.path.slice(f.path.indexOf("/") + 1) : f.path;
-
-        let indicator: string;
-        if (f.inLocal && f.inRepo) {
-          indicator = chalk.green("◉"); // synced — both sides
-        } else if (f.inLocal && !f.inRepo) {
-          indicator = chalk.yellow("◐"); // local only
-        } else {
-          indicator = chalk.blue("◑"); // repo only
-        }
-
-        // Add side labels when filtering or when not on both sides
-        let suffix = "";
-        if (!f.inLocal && !options.repo) {
-          suffix = chalk.blue(" (repo only)");
-        } else if (!f.inRepo && !options.local) {
-          suffix = chalk.yellow(" (local only)");
-        }
-
-        console.log(`  │    ${indicator} ${name}${suffix}`);
-      }
-    }
-
-    // Footer with counts
-    const localCount = sorted.filter((p) => localFiles.has(p)).length;
-    const repoCount = sorted.filter((p) => repoFiles.has(p)).length;
-    const bothCount = sorted.filter((p) => localFiles.has(p) && repoFiles.has(p)).length;
-    const localOnly = localCount - bothCount;
-    const repoOnly = repoCount - bothCount;
-
-    const countParts: string[] = [];
-    if (bothCount) {
-      countParts.push(chalk.green(`${bothCount} synced`));
-    }
-    if (localOnly) {
-      countParts.push(chalk.yellow(`${localOnly} local-only`));
-    }
-    if (repoOnly) {
-      countParts.push(chalk.blue(`${repoOnly} repo-only`));
-    }
-
-    console.log(chalk.dim(`  │`));
-    console.log(chalk.cyan(`  └─ ${sorted.length} files: ${countParts.join(", ")}`));
+    roots.push({
+      repo: root.repo,
+      local: root.local,
+      include: root.include,
+      exclude: root.exclude,
+      files,
+      counts: countInventory(files),
+    });
   }
 
-  // Legend
+  const totals = roots.reduce<InventoryCounts>((acc, root) => ({
+    total: acc.total + root.counts.total,
+    synced: acc.synced + root.counts.synced,
+    localOnly: acc.localOnly + root.counts.localOnly,
+    repoOnly: acc.repoOnly + root.counts.repoOnly,
+  }), { total: 0, synced: 0, localOnly: 0, repoOnly: 0 });
+
+  console.log();
+  console.log(chalk.bold.cyan(`  ┌─ rotunda inventory`));
+  console.log(chalk.dim(`  │  repo:  ${cwd}`));
+  console.log(chalk.dim(`  │  roots: ${manifest.roots.length}`));
+
+  console.log(chalk.dim(`  │`));
+  console.log(chalk.bold(`  │  roots (${roots.length})`));
+  if (roots.length === 0) {
+    console.log(chalk.dim(`  │    (none declared)`));
+  }
+
+  for (const root of roots) {
+    renderRoot(root);
+  }
+
+  console.log(chalk.dim(`  │`));
+  console.log(chalk.cyan(`  └─ ${roots.length} roots, ${formatCounts(totals)}`));
   console.log();
   console.log(chalk.dim(`  Legend: ${chalk.green("◉")} synced  ${chalk.yellow("◐")} local-only  ${chalk.blue("◑")} repo-only`));
   console.log();
+}
+
+function renderRoot(root: RootInventory): void {
+  console.log(chalk.dim(`  │`));
+  console.log(`  │    ${chalk.green("◉")} ${root.repo.padEnd(28)} ${formatCounts(root.counts)}`);
+  console.log(chalk.dim(`  │      local:   ${root.local}`));
+  console.log(chalk.dim(`  │      repo:    ${root.repo}`));
+  console.log(chalk.dim(`  │      include: ${formatPatterns(root.include)}`));
+  console.log(chalk.dim(`  │      exclude: ${formatPatterns(root.exclude)}`));
+  console.log(chalk.dim(`  │`));
+  console.log(chalk.bold(`  │  files (${root.counts.total})`));
+
+  if (root.files.length === 0) {
+    console.log(chalk.dim(`  │    (none captured)`));
+    return;
+  }
+
+  const width = Math.min(
+    48,
+    Math.max(16, ...root.files.map((file) => file.path.length)),
+  );
+
+  for (const file of root.files) {
+    const indicator = fileIndicator(file);
+    const status = fileStatus(file);
+    console.log(`  │    ${indicator} ${file.path.padEnd(width)} ${status}`);
+  }
+}
+
+function countInventory(files: ListedFile[]): InventoryCounts {
+  const synced = files.filter((file) => file.inLocal && file.inRepo).length;
+  const localOnly = files.filter((file) => file.inLocal && !file.inRepo).length;
+  const repoOnly = files.filter((file) => !file.inLocal && file.inRepo).length;
+  return {
+    total: files.length,
+    synced,
+    localOnly,
+    repoOnly,
+  };
+}
+
+function fileIndicator(file: ListedFile): string {
+  if (file.inLocal && file.inRepo) {
+    return chalk.green("◉");
+  }
+  if (file.inLocal) {
+    return chalk.yellow("◐");
+  }
+  return chalk.blue("◑");
+}
+
+function fileStatus(file: ListedFile): string {
+  if (file.inLocal && file.inRepo) {
+    return chalk.green("synced");
+  }
+  if (file.inLocal) {
+    return chalk.yellow("local-only");
+  }
+  return chalk.blue("repo-only");
+}
+
+function formatCounts(counts: InventoryCounts): string {
+  const parts: string[] = [];
+  if (counts.synced) {
+    parts.push(chalk.green(`${counts.synced} synced`));
+  }
+  if (counts.localOnly) {
+    parts.push(chalk.yellow(`${counts.localOnly} local-only`));
+  }
+  if (counts.repoOnly) {
+    parts.push(chalk.blue(`${counts.repoOnly} repo-only`));
+  }
+  const detail = parts.length > 0 ? `: ${parts.join(", ")}` : "";
+  return `${counts.total} files${detail}`;
+}
+
+function formatPatterns(patterns: string[]): string {
+  return patterns.length > 0 ? patterns.join(", ") : chalk.dim("(none)");
 }
