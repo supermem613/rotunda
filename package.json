@@ -1,6 +1,6 @@
 {
   "name": "rotunda",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Bidirectional config sync tool with LLM-assisted review",
   "type": "module",
   "bin": {

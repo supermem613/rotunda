@@ -24,6 +24,17 @@ const ANSI_ALT_SCREEN_OFF = "\x1b[?1049l";
 const ANSI_HIDE_CURSOR = "\x1b[?25l";
 const ANSI_SHOW_CURSOR = "\x1b[?25h";
 
+function resolveCommandInvocation(
+  command: string,
+  args: string[],
+  platform: NodeJS.Platform = process.platform,
+): { command: string; args: string[] } {
+  if (platform === "win32") {
+    return { command: "cmd.exe", args: ["/d", "/s", "/c", command, ...args] };
+  }
+  return { command, args };
+}
+
 export interface RunTuiOptions {
   changes: FileChange[];
   manifest: Manifest;
@@ -265,9 +276,9 @@ async function runEditor(
   // Suspend alt-screen so the editor takes over the terminal cleanly.
   stdout.write(ANSI_ALT_SCREEN_OFF + ANSI_SHOW_CURSOR);
   try {
-    spawnSync("code", ["--diff", repoFile, localFile, "--wait"], {
+    const invocation = resolveCommandInvocation("code", ["--diff", repoFile, localFile, "--wait"]);
+    spawnSync(invocation.command, invocation.args, {
       stdio: "inherit",
-      shell: process.platform === "win32",
     });
   } catch {
     // ignore — push a message via failure event
