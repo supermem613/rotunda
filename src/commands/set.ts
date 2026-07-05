@@ -57,8 +57,10 @@ export async function setCommand(
           // backend to publish through the backend the repo now declares.
           backend = resolveBackend(cwd);
         }
-      } catch {
-        console.log(chalk.yellow("  ⚠ git pull failed — continuing with local state."));
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        console.log(chalk.yellow("  ⚠ Pull failed — continuing with local state."));
+        console.log(chalk.dim("    " + detail.split("\n").join("\n    ")));
       }
     }
 

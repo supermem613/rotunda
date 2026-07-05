@@ -49,8 +49,10 @@ export async function pullCommand(options: { yes?: boolean }): Promise<void> {
           // Reload manifest in case the pull updated include/exclude/roots.
           manifest = loadManifest(cwd);
         }
-      } catch {
-        console.log(chalk.yellow("  ⚠ git pull failed — continuing with local state."));
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        console.log(chalk.yellow("  ⚠ Pull failed — continuing with local state."));
+        console.log(chalk.dim("    " + detail.split("\n").join("\n    ")));
       }
     }
 

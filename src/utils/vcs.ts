@@ -1,11 +1,8 @@
-import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { promisify } from "node:util";
+import spawn from "cross-spawn";
 import { loadManifestDocument } from "../core/manifest.js";
 import { gitCommitAndPush, gitPull, isGitRepo } from "./git.js";
-
-const execFileAsync = promisify(execFile);
 
 /**
  * Publish is one atomic verb (stage + commit + push), not separate git steps,
@@ -47,16 +44,45 @@ interface SodaStatusData {
   files: string[];
 }
 
-interface SodaPullData {
+/**
+ * `sd pull` reports one reconcile outcome per branch. `worktree` (soda's
+ * worktreeUpdated flag) is true only when remote commits were actually brought
+ * into the working tree, which is the signal rotunda uses to decide whether the
+ * manifest and backend need reloading. `up-to-date`, `ahead`, and `published`
+ * outcomes leave the working tree untouched and report worktree false.
+ */
+interface SodaPullOutcome {
   status: string;
+  worktree: boolean;
 }
 
-const defaultSodaRunner: SodaRunner = async (args: string[], cwd: string): Promise<SodaRunResult> => {
-  const result = (await execFileAsync("sd", args, {
-    cwd,
-    maxBuffer: 10 * 1024 * 1024, // 10MB
-  })) as { stdout: string; stderr: string };
-  return { stdout: result.stdout, stderr: result.stderr };
+// `sd` is installed as an npm bin, so on Windows it resolves to a `sd.cmd`
+// shim rather than a native executable. Node's execFile neither searches
+// PATHEXT nor (since the CVE-2024-27980 fix) spawns `.cmd` files without a
+// shell, so a bare execFile("sd") fails with ENOENT/EINVAL. cross-spawn does
+// the PATHEXT resolution and Windows argument quoting correctly, so soda paths
+// with spaces survive intact.
+const defaultSodaRunner: SodaRunner = (args: string[], cwd: string): Promise<SodaRunResult> => {
+  return new Promise((resolve, reject) => {
+    const child = spawn("sd", args, { cwd });
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr?.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve({ stdout, stderr });
+        return;
+      }
+      const detail = stderr.trim() || stdout.trim() || `exit code ${code}`;
+      reject(new Error(`sd ${args[0]} failed: ${detail}`));
+    });
+  });
 };
 
 /**
@@ -131,8 +157,8 @@ export class SodaBackend implements VcsBackend {
   }
 
   async pull(cwd: string): Promise<boolean> {
-    const data = await this.sd<SodaPullData>(["pull"], cwd);
-    return data.status !== "up-to-date";
+    const outcomes = await this.sd<SodaPullOutcome[]>(["pull"], cwd);
+    return outcomes.some((outcome) => outcome.worktree === true);
   }
 
   async publish(cwd: string, paths: string[], message: string): Promise<void> {
