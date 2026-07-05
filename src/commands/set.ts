@@ -7,8 +7,9 @@ import {
 } from "../core/manifest.js";
 import { loadRepoContext } from "../core/repo-context.js";
 import { withLock } from "../utils/lock.js";
-import { gitCommitAndPush, gitPull, isGitRepo } from "../utils/git.js";
+import { isGitRepo } from "../utils/git.js";
 import { pruneSettingsEqual } from "../core/include-glob.js";
+import { resolveBackend } from "../utils/vcs.js";
 
 export interface SetRootOptions {
   /**
@@ -44,11 +45,12 @@ export async function setCommand(
   }
 
   const { cwd } = loadRepoContext();
+  const backend = resolveBackend(cwd);
 
   await withLock(cwd, "set", async () => {
     if (await isGitRepo(cwd)) {
       try {
-        const pulled = await gitPull(cwd);
+        const pulled = await backend.pull(cwd);
         if (pulled) {
           console.log(chalk.dim("  ↓ Pulled latest from remote."));
         }
@@ -84,7 +86,7 @@ export async function setCommand(
       if (await isGitRepo(cwd)) {
         const commitMsg = `rotunda set — ${rootName} (${changes.map((c) => c.field).join(", ")})`;
         try {
-          await gitCommitAndPush(cwd, ["rotunda.json"], commitMsg, true);
+          await backend.publish(cwd, ["rotunda.json"], commitMsg);
           console.log(chalk.green(`  ✓ Committed and pushed: "${commitMsg}"`));
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);

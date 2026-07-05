@@ -3,8 +3,9 @@ import { loadRepoContext } from "../core/repo-context.js";
 import { loadManifest } from "../core/manifest.js";
 import { loadState, saveState, updateStateFiles, removeFromState } from "../core/state.js";
 import { computeAllChanges } from "../core/engine.js";
-import { gitCommitAndPush, isGitRepo, gitPull } from "../utils/git.js";
+import { isGitRepo } from "../utils/git.js";
 import { withLock } from "../utils/lock.js";
+import { resolveBackend } from "../utils/vcs.js";
 import { loadToken } from "../llm/auth.js";
 import { reviewChanges } from "../llm/review.js";
 import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
@@ -26,13 +27,14 @@ async function confirm(prompt: string): Promise<boolean> {
 export async function pushCommand(options: { yes?: boolean }): Promise<void> {
   const ctx = loadRepoContext();
   const cwd = ctx.cwd;
+  const backend = resolveBackend(cwd);
   let manifest = ctx.manifest;
 
   await withLock(cwd, "push", async () => {
   // Pull latest from remote before computing changes
     if (await isGitRepo(cwd)) {
       try {
-        const pulled = await gitPull(cwd);
+        const pulled = await backend.pull(cwd);
         if (pulled) {
           console.log(chalk.dim("  ↓ Pulled latest from remote."));
           // Reload manifest in case the pull updated include/exclude/roots.
@@ -174,7 +176,7 @@ export async function pushCommand(options: { yes?: boolean }): Promise<void> {
         ? `rotunda push — ${approved.length} file(s) (${reshapeCount} reshaped)`
         : `rotunda push — ${approved.length} file(s)`;
       try {
-        await gitCommitAndPush(cwd, gitPaths, commitMsg, true);
+        await backend.publish(cwd, gitPaths, commitMsg);
         console.log(chalk.green(`\n  ✓ Committed and pushed: "${commitMsg}"`));
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

@@ -4,7 +4,8 @@ import { loadManifest } from "../core/manifest.js";
 import { loadState, saveState } from "../core/state.js";
 import { computeAllChanges } from "../core/engine.js";
 import { withLock } from "../utils/lock.js";
-import { isGitRepo, gitPull, gitCommitAndPush } from "../utils/git.js";
+import { isGitRepo } from "../utils/git.js";
+import { resolveBackend } from "../utils/vcs.js";
 import { runTui } from "../tui/screen.js";
 import { initialState, type Row } from "../tui/state.js";
 import { planApply, executeApply, sweepAllConfiguredRoots } from "../sync/apply.js";
@@ -12,12 +13,13 @@ import { planApply, executeApply, sweepAllConfiguredRoots } from "../sync/apply.
 export async function syncCommand(options: { yes?: boolean }): Promise<void> {
   const ctx = loadRepoContext();
   const cwd = ctx.cwd;
+  const backend = resolveBackend(cwd);
   let manifest = ctx.manifest;
 
   await withLock(cwd, "sync", async () => {
     if (await isGitRepo(cwd)) {
       try {
-        const pulled = await gitPull(cwd);
+        const pulled = await backend.pull(cwd);
         if (pulled) {
           console.log(chalk.dim("  ↓ Pulled latest from remote."));
           // Reload manifest: the pull may have brought in new include/exclude
@@ -99,7 +101,7 @@ export async function syncCommand(options: { yes?: boolean }): Promise<void> {
     if (exec.gitPaths.length > 0 && (await isGitRepo(cwd))) {
       const commitMsg = `rotunda sync — ${exec.gitPaths.length} file(s)`;
       try {
-        await gitCommitAndPush(cwd, exec.gitPaths, commitMsg, true);
+        await backend.publish(cwd, exec.gitPaths, commitMsg);
         console.log(chalk.green(`  ✓ Committed and pushed: "${commitMsg}"`));
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

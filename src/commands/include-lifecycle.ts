@@ -14,8 +14,9 @@ import {
   type TrackingPlan,
 } from "../core/include-glob.js";
 import { loadState } from "../core/state.js";
-import { gitCommitAndPush, gitPull, isGitRepo } from "../utils/git.js";
+import { isGitRepo } from "../utils/git.js";
 import { withLock } from "../utils/lock.js";
+import { resolveBackend } from "../utils/vcs.js";
 
 type PromptSession = {
   promptLine(question: string): Promise<string>;
@@ -167,13 +168,14 @@ export async function runIncludeLifecycleCommand(
 ): Promise<void> {
   const invocationCwd = process.cwd();
   const { cwd, manifest } = loadRepoContext();
+  const backend = resolveBackend(cwd);
   const promptSession = await createPromptSession();
 
   try {
     await withLock(cwd, kind, async () => {
       if (await isGitRepo(cwd)) {
         try {
-          const pulled = await gitPull(cwd);
+          const pulled = await backend.pull(cwd);
           if (pulled) {
             console.log(chalk.dim("  ↓ Pulled latest from remote."));
           }
@@ -222,7 +224,7 @@ export async function runIncludeLifecycleCommand(
 
         if (result.gitPaths.length > 0 && await isGitRepo(cwd)) {
           try {
-            await gitCommitAndPush(cwd, result.gitPaths, plan.commitMessage, true);
+            await backend.publish(cwd, result.gitPaths, plan.commitMessage);
             console.log(chalk.green(`  ✓ Committed and pushed: "${plan.commitMessage}"`));
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);

@@ -6,7 +6,8 @@ import { computeAllChanges } from "../core/engine.js";
 import { loadToken } from "../llm/auth.js";
 import { reviewChanges } from "../llm/review.js";
 import { withLock } from "../utils/lock.js";
-import { isGitRepo, gitPull } from "../utils/git.js";
+import { isGitRepo } from "../utils/git.js";
+import { resolveBackend } from "../utils/vcs.js";
 import { copyFile, mkdir, rm, access, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { createInterface } from "node:readline";
@@ -35,13 +36,14 @@ async function fileExists(path: string): Promise<boolean> {
 export async function pullCommand(options: { yes?: boolean }): Promise<void> {
   const ctx = loadRepoContext();
   const cwd = ctx.cwd;
+  const backend = resolveBackend(cwd);
   let manifest = ctx.manifest;
 
   await withLock(cwd, "pull", async () => {
   // Pull latest from remote before computing changes
     if (await isGitRepo(cwd)) {
       try {
-        const pulled = await gitPull(cwd);
+        const pulled = await backend.pull(cwd);
         if (pulled) {
           console.log(chalk.dim("  ↓ Pulled latest from remote."));
           // Reload manifest in case the pull updated include/exclude/roots.
