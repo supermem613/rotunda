@@ -446,6 +446,10 @@ The manifest lives at the root of your dotfiles repo:
 
 Full field reference, default config, and machine overrides documentation: [docs/manifest.md](docs/manifest.md)
 
+### VCS backend (git or soda)
+
+Rotunda's write path (commit + push) is backend-driven. By default it uses git. For [soda](https://github.com/supermem613/soda)-managed repos, set `"vcs": "soda"` in `rotunda.json` (or just run `rotunda bind`, which auto-detects it) and rotunda publishes its changes through a dedicated `rotunda` soda changelist instead of raw git. Reads (status, diff, pull) stay on git. See [docs/manifest.md](docs/manifest.md#vcs-backend).
+
 ---
 
 ## 📦 Installation

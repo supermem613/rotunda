@@ -79,11 +79,45 @@ describe("bindCommand", () => {
     const repo = join(TMP_DIR, "repo");
     makeRotundaRepo(repo);
     const { bindCommand } = await import("../../src/commands/bind.js");
-
+ 
     await bindCommand(repo, {});
-
+ 
     const config = loadGlobalConfig(configPath);
     assert.equal(config.dotfilesRepo, repo);
+  });
+
+  it("writes vcs soda into the manifest when the repo is soda-managed", async () => {
+    const repo = join(TMP_DIR, "sodarepo");
+    makeRotundaRepo(repo);
+    const { bindCommand } = await import("../../src/commands/bind.js");
+    const sodaRunner = async () => ({
+      stdout: JSON.stringify({
+        ok: true,
+        command: "status",
+        schemaVersion: 2,
+        timingMs: 1,
+        data: { summary: { repoRoot: repo } },
+      }),
+      stderr: "",
+    });
+    await bindCommand(repo, {}, { sodaRunner });
+    const { readFileSync } = await import("node:fs");
+    const doc = JSON.parse(readFileSync(join(repo, "rotunda.json"), "utf-8"));
+    assert.equal(doc.vcs, "soda");
+  });
+
+  it("leaves the manifest on git when the repo is not soda-managed", async () => {
+    const repo = join(TMP_DIR, "gitrepo");
+    makeRotundaRepo(repo);
+    const { bindCommand } = await import("../../src/commands/bind.js");
+    const sodaRunner = async () => ({
+      stdout: JSON.stringify({ ok: false, error: "not a soda repo" }),
+      stderr: "",
+    });
+    await bindCommand(repo, {}, { sodaRunner });
+    const { readFileSync } = await import("node:fs");
+    const doc = JSON.parse(readFileSync(join(repo, "rotunda.json"), "utf-8"));
+    assert.equal(doc.vcs, undefined);
   });
 
   it("binds to cwd when no path is given", async () => {

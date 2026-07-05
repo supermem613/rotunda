@@ -43,6 +43,7 @@ export const ManifestSchema = z.object({
   roots: z.array(SyncRootSchema),
   globalExclude: z.array(z.string()).default([]),
   machineOverrides: z.record(z.string(), MachineOverrideSchema).optional(),
+  vcs: z.enum(["git", "soda"]).optional(),
 });
 
 export type ManifestDocument = z.infer<typeof ManifestSchema>;
@@ -188,6 +189,7 @@ export function loadManifest(repoPath?: string, hostnameOverride?: string): Mani
     roots,
     globalExclude,
     machineOverrides: data.machineOverrides,
+    vcs: data.vcs ?? "git",
     appliedMachine,
   };
 }

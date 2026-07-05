@@ -1,5 +1,8 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { promisify } from "node:util";
+import { loadManifestDocument } from "../core/manifest.js";
 import { gitCommitAndPush, gitPull, isGitRepo } from "./git.js";
 
 const execFileAsync = promisify(execFile);
@@ -56,6 +59,15 @@ const defaultSodaRunner: SodaRunner = async (args: string[], cwd: string): Promi
   return { stdout: result.stdout, stderr: result.stderr };
 };
 
+/**
+ * soda's git-interlock hooks block raw git writes in an sd-powered repo.
+ * We detect that guard so we can tell the user to select the soda backend
+ * instead of surfacing a cryptic git hook failure.
+ */
+export function isSodaHookBlock(message: string): boolean {
+  return message.includes("sd-powered repo");
+}
+
 export async function sodaPreflight(cwd: string, run: SodaRunner = defaultSodaRunner): Promise<SodaCapability> {
   try {
     const result = await run(["status"], cwd);
@@ -86,7 +98,19 @@ export class GitBackend implements VcsBackend {
   }
 
   async publish(cwd: string, paths: string[], message: string): Promise<void> {
-    await gitCommitAndPush(cwd, paths, message, true);
+    try {
+      await gitCommitAndPush(cwd, paths, message, true);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      if (isSodaHookBlock(detail)) {
+        throw new Error(
+          `This repository is soda-managed, so raw git writes are blocked. ` +
+            `Set "vcs": "soda" in rotunda.json (or run \`rotunda bind\` to auto-detect) to publish through soda.`,
+          { cause: err },
+        );
+      }
+      throw err;
+    }
   }
 }
 
@@ -128,7 +152,15 @@ export class SodaBackend implements VcsBackend {
   }
 }
 
+/**
+ * Backend selection is driven by the committed manifest `vcs` field.
+ * A repo with no rotunda.json defaults to git, which keeps rotunda's own
+ * self-update (a repo without a manifest) on the git read/pull path.
+ */
 export function resolveBackend(cwd: string): VcsBackend {
-  void cwd;
-  return new GitBackend();
+  if (!existsSync(join(cwd, "rotunda.json"))) {
+    return new GitBackend();
+  }
+  const doc = loadManifestDocument(cwd);
+  return doc.vcs === "soda" ? new SodaBackend() : new GitBackend();
 }

@@ -7,10 +7,16 @@ import {
   expandUserPath,
   getGlobalConfigPath,
 } from "../core/config.js";
+import { loadManifestDocument, saveManifestDocument } from "../core/manifest.js";
+import { sodaPreflight, type SodaRunner } from "../utils/vcs.js";
 
 interface BindOptions {
   unset?: boolean;
   show?: boolean;
+}
+
+interface BindDeps {
+  sodaRunner?: SodaRunner;
 }
 
 /**
@@ -29,6 +35,7 @@ interface BindOptions {
 export async function bindCommand(
   pathArg: string | undefined,
   options: BindOptions,
+  deps: BindDeps = {},
 ): Promise<void> {
   const config = loadGlobalConfig();
   const configPath = getGlobalConfigPath();
@@ -98,4 +105,16 @@ export async function bindCommand(
     console.log(chalk.green("✓") + ` Bound to ${target}`);
   }
   console.log(chalk.dim(`  Config: ${configPath}`));
+
+  const capability = await sodaPreflight(target, deps.sodaRunner);
+  if (capability.ok) {
+    const doc = loadManifestDocument(target);
+    if (doc.vcs !== "soda") {
+      saveManifestDocument(target, { ...doc, vcs: "soda" });
+      console.log(
+        chalk.green("✓") +
+          ` Detected soda-managed repo; set "vcs": "soda" in rotunda.json.`,
+      );
+    }
+  }
 }

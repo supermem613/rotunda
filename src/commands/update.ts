@@ -3,25 +3,18 @@ import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { git, isGitRepo } from "../utils/git.js";
+import { isGitRepo } from "../utils/git.js";
+import { resolveBackend as defaultResolveBackend } from "../utils/vcs.js";
+import type { VcsBackend } from "../utils/vcs.js";
 
 const execAsync = promisify(exec);
-
-type ExecResult = {
-  stdout: string;
-  stderr: string;
-};
 
 export type UpdateDeps = {
   repoRoot?: string;
   isGitRepo?: (dir: string) => Promise<boolean>;
-  runGit?: (args: string[], cwd: string) => Promise<ExecResult>;
+  resolveBackend?: (cwd: string) => VcsBackend;
   runCommand?: (command: string, cwd: string) => Promise<void>;
 };
-
-export function gitPullMadeNoChanges(output: string): boolean {
-  return /already up[- ]to[- ]date\.?/i.test(output);
-}
 
 async function defaultRunCommand(command: string, cwd: string): Promise<void> {
   await execAsync(command, { cwd });
@@ -32,7 +25,7 @@ export async function updateCommand(deps: UpdateDeps = {}): Promise<void> {
   const thisFile = fileURLToPath(import.meta.url);
   const repoRoot = deps.repoRoot ?? dirname(dirname(dirname(thisFile)));
   const checkGitRepo = deps.isGitRepo ?? isGitRepo;
-  const runGit = deps.runGit ?? git;
+  const resolve = deps.resolveBackend ?? defaultResolveBackend;
   const runCommand = deps.runCommand ?? defaultRunCommand;
 
   console.log(chalk.dim(`  Rotunda repo: ${repoRoot}\n`));
@@ -42,23 +35,22 @@ export async function updateCommand(deps: UpdateDeps = {}): Promise<void> {
     process.exit(1);
   }
 
-  // 1. git pull
+  // 1. pull
   console.log(chalk.bold("  ↓ Pulling latest..."));
+  let pulled = false;
   try {
-    const result = await runGit(["pull", "--ff-only"], repoRoot);
-    const output = (result.stdout + result.stderr).trim();
-    if (gitPullMadeNoChanges(output)) {
-      console.log(chalk.dim("    Already up to date."));
-      console.log(chalk.dim("    Skipping install and build."));
-      return;
-    } else {
-      console.log(chalk.green("    ✓ Pulled new changes."));
-    }
+    pulled = await resolve(repoRoot).pull(repoRoot);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(chalk.red("  ✗ git pull failed:") + ` ${msg}`);
+    console.error(chalk.red("  ✗ pull failed:") + ` ${msg}`);
     process.exit(1);
   }
+  if (!pulled) {
+    console.log(chalk.dim("    Already up to date."));
+    console.log(chalk.dim("    Skipping install and build."));
+    return;
+  }
+  console.log(chalk.green("    ✓ Pulled new changes."));
 
   // 2. npm install
   console.log(chalk.bold("\n  ⬡ Installing dependencies..."));

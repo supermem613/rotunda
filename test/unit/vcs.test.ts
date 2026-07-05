@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
-import { GitBackend, resolveBackend, sodaPreflight, SodaBackend, type SodaRunner } from "../../src/utils/vcs.js";
+import { GitBackend, isSodaHookBlock, resolveBackend, sodaPreflight, SodaBackend, type SodaRunner } from "../../src/utils/vcs.js";
 
 const TMP = join(tmpdir(), "rotunda-vcs-test");
 
@@ -43,10 +43,69 @@ afterEach(() => {
   rmSync(TMP, { recursive: true, force: true });
 });
 
-describe("resolveBackend", () => {
-  it("returns a GitBackend instance by default", () => {
-    const backend = resolveBackend(join(TMP, "repo"));
+describe("resolveBackend (manifest-driven)", () => {
+  it("returns SodaBackend when the manifest declares vcs soda", () => {
+    const dir = join(TMP, "manifest-soda");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "rotunda.json"),
+      JSON.stringify({
+        version: 1,
+        roots: [{ name: "d", local: "/l", repo: "r", include: [], exclude: [] }],
+        globalExclude: [],
+        vcs: "soda",
+      }),
+    );
+
+    const backend = resolveBackend(dir);
+    assert.ok(backend instanceof SodaBackend);
+  });
+
+  it("returns GitBackend when the manifest declares vcs git", () => {
+    const dir = join(TMP, "manifest-git");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "rotunda.json"),
+      JSON.stringify({
+        version: 1,
+        roots: [{ name: "d", local: "/l", repo: "r", include: [], exclude: [] }],
+        globalExclude: [],
+        vcs: "git",
+      }),
+    );
+
+    const backend = resolveBackend(dir);
     assert.ok(backend instanceof GitBackend);
+  });
+
+  it("returns GitBackend when no manifest is present", () => {
+    const dir = join(TMP, "no-manifest");
+    mkdirSync(dir, { recursive: true });
+
+    const backend = resolveBackend(dir);
+    assert.ok(backend instanceof GitBackend);
+  });
+
+  it("throws for an invalid manifest that exists", () => {
+    const dir = join(TMP, "invalid-manifest");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "rotunda.json"), JSON.stringify({ version: "1", roots: [], globalExclude: [] }));
+
+    assert.throws(() => resolveBackend(dir), /Invalid manifest/);
+  });
+});
+
+describe("isSodaHookBlock", () => {
+  it("detects the soda hook-guard message", () => {
+    assert.equal(isSodaHookBlock("soda: raw git commit blocked in this sd-powered repo"), true);
+  });
+
+  it("detects the push guard message", () => {
+    assert.equal(isSodaHookBlock("soda: raw git push blocked in this sd-powered repo"), true);
+  });
+
+  it("returns false for an unrelated git error", () => {
+    assert.equal(isSodaHookBlock("fatal: not a git repository"), false);
   });
 });
 

@@ -47,6 +47,8 @@ export interface Manifest {
   globalExclude: string[];
   /** Raw machine overrides from the manifest (before applying). */
   machineOverrides?: Record<string, MachineOverride>;
+  /** VCS backend for the write path. Absent means "git". */
+  vcs?: "git" | "soda";
   /** The hostname that was matched (if any), for display purposes. */
   appliedMachine?: string;
 }

@@ -3,60 +3,65 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { gitPullMadeNoChanges, updateCommand } from "../../src/commands/update.js";
+import { updateCommand } from "../../src/commands/update.js";
+import type { VcsBackend } from "../../src/utils/vcs.js";
 
 describe("updateCommand", () => {
-  it("skips install and build when git pull made no changes", async () => {
+  it("skips install and build when backend pull returns false", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "rotunda-update-"));
     try {
       mkdirSync(join(repoRoot, ".git"), { recursive: true });
       const commands: string[] = [];
+      const backend: VcsBackend = {
+        isRepo: async () => true,
+        pull: async () => {
+          commands.push("backend.pull");
+          return false;
+        },
+        publish: async () => {},
+      };
       await updateCommand({
         repoRoot,
         isGitRepo: async () => true,
-        runGit: async (args) => {
-          commands.push(`git ${args.join(" ")}`);
-          return { stdout: "Already up to date.\n", stderr: "" };
-        },
+        resolveBackend: () => backend,
         runCommand: async (command) => {
           commands.push(command);
         },
       });
-      assert.deepEqual(commands, ["git pull --ff-only"]);
+      assert.deepEqual(commands, ["backend.pull"]);
     } finally {
       rmSync(repoRoot, { recursive: true, force: true });
     }
   });
 
-  it("runs install and build when git pull returns changes", async () => {
+  it("runs install and build when backend pull returns true", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "rotunda-update-"));
     try {
       mkdirSync(join(repoRoot, ".git"), { recursive: true });
       const commands: string[] = [];
+      const backend: VcsBackend = {
+        isRepo: async () => true,
+        pull: async () => {
+          commands.push("backend.pull");
+          return true;
+        },
+        publish: async () => {},
+      };
       await updateCommand({
         repoRoot,
         isGitRepo: async () => true,
-        runGit: async (args) => {
-          commands.push(`git ${args.join(" ")}`);
-          return { stdout: "Fast-forward\n package.json | 2 +-\n", stderr: "" };
-        },
+        resolveBackend: () => backend,
         runCommand: async (command) => {
           commands.push(command);
         },
       });
       assert.deepEqual(commands, [
-        "git pull --ff-only",
+        "backend.pull",
         "npm install --no-audit --no-fund",
         "npm run build",
       ]);
     } finally {
       rmSync(repoRoot, { recursive: true, force: true });
     }
-  });
-
-  it("recognizes current and legacy no-change git pull output", () => {
-    assert.equal(gitPullMadeNoChanges("Already up to date."), true);
-    assert.equal(gitPullMadeNoChanges("Already up-to-date."), true);
-    assert.equal(gitPullMadeNoChanges("Updating abc..def\nFast-forward"), false);
   });
 });

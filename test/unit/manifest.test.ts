@@ -43,6 +43,67 @@ describe("loadManifest", () => {
     assert.deepStrictEqual(m.globalExclude, ["*.tmp"]);
   });
 
+  it("defaults vcs to git when absent", () => {
+    writeManifest(TMP_DIR, {
+      version: 1,
+      roots: [
+        {
+          name: "dotfiles",
+          local: "/home/user/dotfiles",
+          repo: "dotfiles",
+          include: ["*"],
+          exclude: [".git"],
+        },
+      ],
+      globalExclude: ["*.tmp"],
+    });
+
+    const m = loadManifest(TMP_DIR);
+    assert.equal(m.vcs, "git");
+  });
+
+  it("loads an explicit soda vcs", () => {
+    writeManifest(TMP_DIR, {
+      version: 1,
+      roots: [
+        {
+          name: "dotfiles",
+          local: "/home/user/dotfiles",
+          repo: "dotfiles",
+          include: ["*"],
+          exclude: [".git"],
+        },
+      ],
+      globalExclude: ["*.tmp"],
+      vcs: "soda",
+    });
+
+    const m = loadManifest(TMP_DIR);
+    assert.equal(m.vcs, "soda");
+  });
+
+  it("rejects an invalid vcs value", () => {
+    writeManifest(TMP_DIR, {
+      version: 1,
+      roots: [
+        {
+          name: "dotfiles",
+          local: "/home/user/dotfiles",
+          repo: "dotfiles",
+          include: ["*"],
+          exclude: [".git"],
+        },
+      ],
+      globalExclude: ["*.tmp"],
+      vcs: "hg",
+    });
+
+    assert.throws(() => loadManifest(TMP_DIR), (err: unknown) => {
+      assert.ok(err instanceof RotundaError);
+      return true;
+    });
+  });
+
   // 2. ~ paths are resolved to homedir
   it("resolves ~ to os.homedir()", () => {
     writeManifest(TMP_DIR, {

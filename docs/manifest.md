@@ -28,7 +28,7 @@ The `rotunda.json` manifest file defines what rotunda syncs, where it syncs from
 }
 ```
 
-The manifest has three top-level fields:
+The manifest has four top-level fields:
 
 | Field           | Type       | Required | Default | Description                                       |
 |-----------------|------------|----------|---------|---------------------------------------------------|
@@ -36,6 +36,7 @@ The manifest has three top-level fields:
 | `roots`         | `array`    | Yes      | —       | Array of sync root definitions (see below).       |
 | `globalExclude` | `string[]` | No       | `[]`    | Glob patterns excluded from **all** roots.        |
 | `machineOverrides` | `object` | No    | —       | Per-machine exclude overrides (see below).        |
+| `vcs`           | `"git" \| "soda"` | No | `"git"` | VCS backend for the write path. See [VCS Backend](#vcs-backend). Auto-detected at `rotunda bind` time. |
 
 ## Roots
 
@@ -270,6 +271,21 @@ Run `rotunda doctor` to see which machine was matched:
 ```
 Manifest ............ ✅ rotunda.json valid (2 roots, applied overrides for: wisp)
 ```
+
+## VCS Backend
+
+The optional `vcs` field selects how rotunda commits and pushes changes. It travels with the repo so every machine that clones it publishes the same way.
+
+| Value    | Behavior |
+|----------|----------|
+| `"git"` (default) | Stage the changed paths, commit, and push with git. Used when `vcs` is absent. |
+| `"soda"` | For [soda](https://github.com/supermem613/soda)-managed repos. Rotunda isolates only its changed paths into a dedicated soda changelist named `rotunda`, submits that changelist, and pushes with `sd`. The rest of your working set is never swept into the commit. |
+
+**Auto-detection:** `rotunda bind` runs a soda preflight against the target repo. If the repo is soda-managed, bind writes `"vcs": "soda"` into `rotunda.json` for you, so you normally never set this field by hand.
+
+**Reads stay on git:** status, diff, and pull-for-changes use plain git regardless of backend, because soda leaves the working tree as a normal git checkout.
+
+**If the field is wrong:** In a soda-managed repo configured for git, soda's git hooks block raw git writes. Rotunda detects that and tells you to set `"vcs": "soda"` (or re-run `rotunda bind`).
 
 ## Default Configuration
 

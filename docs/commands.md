@@ -22,7 +22,7 @@ rotunda <command> [options]
 | `rotunda doctor`   | Structural health check (with `--fix` for LLM repair)|
 | `rotunda list`     | Show manifest roots and captured files               |
 | `rotunda auth`     | Authenticate with GitHub Copilot                     |
-| `rotunda update`   | Self-update: git pull, npm install, rebuild           |
+| `rotunda update`   | Self-update: pull via the configured backend, npm install, rebuild |
 
 ---
 
@@ -313,7 +313,7 @@ Files that changed on both sides are not pushed. Rotunda warns you and directs y
 
 **Git integration:**
 
-After copying files, rotunda stages the changed paths and creates a commit with the message `rotunda push — N file(s)`, then pushes it to the remote. The `.rotunda/` state directory is **not** committed — it holds per-machine sync hashes and is gitignored. All three sync commands (`push`, `pull`, `sync`) automatically run `git pull --ff-only` before computing changes to ensure you're working against the latest remote state.
+After copying files, rotunda stages the changed paths and creates a commit with the message `rotunda push — N file(s)`, then pushes it to the remote. The `.rotunda/` state directory is **not** committed — it holds per-machine sync hashes and is gitignored. All three sync commands (`push`, `pull`, `sync`) automatically run `git pull --ff-only` before computing changes to ensure you're working against the latest remote state. The write path (commit + push) uses the backend selected by the manifest `vcs` field. For soda-managed repos (`vcs: "soda"`), rotunda isolates its changed paths into a dedicated `rotunda` changelist and publishes with `sd` instead of raw git. See [Manifest → VCS Backend](manifest.md#vcs-backend).
 
 ---
 
