@@ -250,7 +250,7 @@ rotunda list
 | `rotunda remove <path>` | Stop tracking a file or directory path, delete matching repo files, then commit/push |
 | `rotunda status` | Show what changed since last sync |
 | `rotunda sync [-y]` | Bidirectional sync with conflict resolution |
-| `rotunda update` | Self-update: git pull, npm install, and rebuild rotunda |
+| `rotunda update` | Self-update: pull (soda or git, auto-detected), npm install, and rebuild rotunda |
 | `rotunda where` | Print the absolute path of the bound dotfiles repo |
 
 ### Diff Options

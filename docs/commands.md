@@ -22,7 +22,7 @@ rotunda <command> [options]
 | `rotunda doctor`   | Structural health check (with `--fix` for LLM repair)|
 | `rotunda list`     | Show manifest roots and captured files               |
 | `rotunda auth`     | Authenticate with GitHub Copilot                     |
-| `rotunda update`   | Self-update: pull via the configured backend, npm install, rebuild |
+| `rotunda update` | Self-update: pull (auto-detects soda vs git), npm install, rebuild |
 
 ---
 
@@ -722,7 +722,7 @@ rotunda update
 **What it does:**
 
 1. Resolves the rotunda installation directory from the running binary.
-2. Runs `git pull --ff-only` to fetch the latest source.
+2. Detects whether the install repo is soda-managed. If it is, it pulls with `sd pull`; otherwise it runs `git pull --ff-only`.
 3. Runs `npm install` to update dependencies.
 4. Runs `npm run build` to recompile.
 

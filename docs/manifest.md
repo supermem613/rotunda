@@ -283,7 +283,9 @@ The optional `vcs` field selects how rotunda commits and pushes changes. It trav
 
 **Auto-detection:** `rotunda bind` runs a soda preflight against the target repo. If the repo is soda-managed, bind writes `"vcs": "soda"` into `rotunda.json` for you, so you normally never set this field by hand.
 
-**Reads stay on git:** status, diff, and pull-for-changes use plain git regardless of backend, because soda leaves the working tree as a normal git checkout.
+**Reads stay on git:** status and diff use plain git regardless of backend, because soda leaves the working tree as a normal git checkout. Pull uses the selected backend (`sd pull` for soda, `git pull` for git) so soda's stream state stays consistent.
+
+**Self-update:** `rotunda update` detects at runtime whether its own install repo is soda-managed and pulls with `sd` when it is, otherwise git. The install repo has no `rotunda.json`, so this is decided by probing soda directly rather than by the manifest `vcs` field.
 
 **If the field is wrong:** In a soda-managed repo configured for git, soda's git hooks block raw git writes. Rotunda detects that and tells you to set `"vcs": "soda"` (or re-run `rotunda bind`).
 

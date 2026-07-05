@@ -153,9 +153,8 @@ export class SodaBackend implements VcsBackend {
 }
 
 /**
- * Backend selection is driven by the committed manifest `vcs` field.
- * A repo with no rotunda.json defaults to git, which keeps rotunda's own
- * self-update (a repo without a manifest) on the git read/pull path.
+ * Backend selection for dotfiles repos is driven by the committed manifest
+ * `vcs` field. A repo with no rotunda.json defaults to git.
  */
 export function resolveBackend(cwd: string): VcsBackend {
   if (!existsSync(join(cwd, "rotunda.json"))) {
@@ -163,4 +162,33 @@ export function resolveBackend(cwd: string): VcsBackend {
   }
   const doc = loadManifestDocument(cwd);
   return doc.vcs === "soda" ? new SodaBackend() : new GitBackend();
+}
+
+/**
+ * Backend selection for rotunda's own self-update (`rotunda update`).
+ *
+ * The rotunda install repo has no rotunda.json, so manifest-driven selection
+ * does not apply. Instead we detect at runtime whether the install repo is
+ * itself soda-managed and, if so, self-update through sd primitives so we do
+ * not fight soda's git-interlock. `initialized === true` is the authoritative
+ * signal: a plain git repo that the sd CLI can merely read reports false, and
+ * anything that cannot answer (sd missing, not a repo) stays on git.
+ */
+export async function resolveSelfUpdateBackend(
+  cwd: string,
+  run: SodaRunner = defaultSodaRunner,
+): Promise<VcsBackend> {
+  return (await isSodaManagedRepo(cwd, run)) ? new SodaBackend(run) : new GitBackend();
+}
+
+async function isSodaManagedRepo(cwd: string, run: SodaRunner): Promise<boolean> {
+  try {
+    const result = await run(["status"], cwd);
+    const envelope = JSON.parse(result.stdout) as SodaEnvelope<{
+      summary?: { initialized?: boolean };
+    }>;
+    return envelope.ok === true && envelope.data?.summary?.initialized === true;
+  } catch {
+    return false;
+  }
 }

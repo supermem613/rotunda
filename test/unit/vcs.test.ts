@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
-import { GitBackend, isSodaHookBlock, resolveBackend, sodaPreflight, SodaBackend, type SodaRunner } from "../../src/utils/vcs.js";
+import { GitBackend, isSodaHookBlock, resolveBackend, resolveSelfUpdateBackend, sodaPreflight, SodaBackend, type SodaRunner } from "../../src/utils/vcs.js";
 
 const TMP = join(tmpdir(), "rotunda-vcs-test");
 
@@ -162,6 +162,39 @@ describe("sodaPreflight", () => {
     });
 
     assert.equal(await new SodaBackend(mockOkRunner).isRepo("/x"), true);
+  });
+});
+
+describe("resolveSelfUpdateBackend", () => {
+  function statusRunner(initialized: boolean): SodaRunner {
+    return async () => ({
+      stdout: JSON.stringify({
+        ok: true,
+        command: "status",
+        schemaVersion: 2,
+        timingMs: 1,
+        data: { summary: { repoRoot: "/x", initialized }, files: [] },
+      }),
+      stderr: "",
+    });
+  }
+
+  it("selects the soda backend when the repo is soda-initialized", async () => {
+    const backend = await resolveSelfUpdateBackend("/x", statusRunner(true));
+    assert.ok(backend instanceof SodaBackend);
+  });
+
+  it("selects the git backend when the repo is only git (not soda-initialized)", async () => {
+    const backend = await resolveSelfUpdateBackend("/x", statusRunner(false));
+    assert.ok(backend instanceof GitBackend);
+  });
+
+  it("selects the git backend when the sd command is unavailable", async () => {
+    const missingSd: SodaRunner = async () => {
+      throw new Error("sd not found");
+    };
+    const backend = await resolveSelfUpdateBackend("/x", missingSd);
+    assert.ok(backend instanceof GitBackend);
   });
 });
 

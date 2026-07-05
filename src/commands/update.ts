@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isGitRepo } from "../utils/git.js";
-import { resolveBackend as defaultResolveBackend } from "../utils/vcs.js";
+import { resolveSelfUpdateBackend } from "../utils/vcs.js";
 import type { VcsBackend } from "../utils/vcs.js";
 
 const execAsync = promisify(exec);
@@ -12,7 +12,7 @@ const execAsync = promisify(exec);
 export type UpdateDeps = {
   repoRoot?: string;
   isGitRepo?: (dir: string) => Promise<boolean>;
-  resolveBackend?: (cwd: string) => VcsBackend;
+  resolveBackend?: (cwd: string) => VcsBackend | Promise<VcsBackend>;
   runCommand?: (command: string, cwd: string) => Promise<void>;
 };
 
@@ -25,7 +25,7 @@ export async function updateCommand(deps: UpdateDeps = {}): Promise<void> {
   const thisFile = fileURLToPath(import.meta.url);
   const repoRoot = deps.repoRoot ?? dirname(dirname(dirname(thisFile)));
   const checkGitRepo = deps.isGitRepo ?? isGitRepo;
-  const resolve = deps.resolveBackend ?? defaultResolveBackend;
+  const resolve = deps.resolveBackend ?? resolveSelfUpdateBackend;
   const runCommand = deps.runCommand ?? defaultRunCommand;
 
   console.log(chalk.dim(`  Rotunda repo: ${repoRoot}\n`));
@@ -39,7 +39,8 @@ export async function updateCommand(deps: UpdateDeps = {}): Promise<void> {
   console.log(chalk.bold("  ↓ Pulling latest..."));
   let pulled = false;
   try {
-    pulled = await resolve(repoRoot).pull(repoRoot);
+    const backend = await resolve(repoRoot);
+    pulled = await backend.pull(repoRoot);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(chalk.red("  ✗ pull failed:") + ` ${msg}`);
