@@ -45,15 +45,15 @@ interface SodaStatusData {
 }
 
 /**
- * `sd pull` reports one reconcile outcome per branch. `worktree` (soda's
- * worktreeUpdated flag) is true only when remote commits were actually brought
- * into the working tree, which is the signal rotunda uses to decide whether the
- * manifest and backend need reloading. `up-to-date`, `ahead`, and `published`
- * outcomes leave the working tree untouched and report worktree false.
+ * `sd pull` reports one reconcile outcome per branch. `worktreeUpdated` is true
+ * only when remote commits were actually brought into the working tree, which
+ * is the signal rotunda uses to decide whether the manifest and backend need
+ * reloading. `up-to-date`, `ahead`, `published`, and `refuse` outcomes leave the
+ * working tree untouched and report worktreeUpdated false.
  */
 interface SodaPullOutcome {
   status: string;
-  worktree: boolean;
+  worktreeUpdated: boolean;
 }
 
 // `sd` is installed as an npm bin, so on Windows it resolves to a `sd.cmd`
@@ -158,7 +158,7 @@ export class SodaBackend implements VcsBackend {
 
   async pull(cwd: string): Promise<boolean> {
     const outcomes = await this.sd<SodaPullOutcome[]>(["pull"], cwd);
-    return outcomes.some((outcome) => outcome.worktree === true);
+    return outcomes.some((outcome) => outcome.worktreeUpdated === true);
   }
 
   async publish(cwd: string, paths: string[], message: string): Promise<void> {

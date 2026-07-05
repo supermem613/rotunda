@@ -250,11 +250,11 @@ describe("SodaBackend.publish", () => {
 describe("SodaBackend.pull", () => {
   // `sd pull` returns `data` as an array of per-branch reconcile outcomes.
   // A pull only brings remote changes into the working tree when an outcome
-  // advanced it, which soda reports via the `worktree` (worktreeUpdated) flag.
+  // advanced it, which soda reports via the `worktreeUpdated` flag.
   it("returns true when a branch fast-forwards and advances the worktree", async () => {
     const calls: string[][] = [];
     const runner = createMockRunner([
-      { ok: true, data: [{ status: "fast-forward", branch: "main", upstream: "origin/main", worktree: true }] },
+      { ok: true, data: [{ status: "fast-forward", branch: "main", upstream: "origin/main", worktreeUpdated: true }] },
     ], calls);
 
     assert.equal(await new SodaBackend(runner).pull("/repo"), true);
@@ -264,7 +264,7 @@ describe("SodaBackend.pull", () => {
   it("returns false when pull reports up to date", async () => {
     const calls: string[][] = [];
     const runner = createMockRunner([
-      { ok: true, data: [{ status: "up-to-date", branch: "main", upstream: "origin/main", worktree: false }] },
+      { ok: true, data: [{ status: "up-to-date", branch: "main", upstream: "origin/main", worktreeUpdated: false }] },
     ], calls);
 
     assert.equal(await new SodaBackend(runner).pull("/repo"), false);
@@ -274,7 +274,7 @@ describe("SodaBackend.pull", () => {
   it("returns false when the local branch is ahead (nothing fetched)", async () => {
     const calls: string[][] = [];
     const runner = createMockRunner([
-      { ok: true, data: [{ status: "ahead", branch: "main", upstream: "origin/main", worktree: false }] },
+      { ok: true, data: [{ status: "ahead", branch: "main", upstream: "origin/main", worktreeUpdated: false }] },
     ], calls);
 
     assert.equal(await new SodaBackend(runner).pull("/repo"), false);
