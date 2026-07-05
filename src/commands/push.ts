@@ -27,7 +27,7 @@ async function confirm(prompt: string): Promise<boolean> {
 export async function pushCommand(options: { yes?: boolean }): Promise<void> {
   const ctx = loadRepoContext();
   const cwd = ctx.cwd;
-  const backend = resolveBackend(cwd);
+  let backend = resolveBackend(cwd);
   let manifest = ctx.manifest;
 
   await withLock(cwd, "push", async () => {
@@ -39,6 +39,9 @@ export async function pushCommand(options: { yes?: boolean }): Promise<void> {
           console.log(chalk.dim("  ↓ Pulled latest from remote."));
           // Reload manifest in case the pull updated include/exclude/roots.
           manifest = loadManifest(cwd);
+          // A pull can also change the manifest's vcs field, so re-resolve the
+          // backend to publish through the backend the repo now declares.
+          backend = resolveBackend(cwd);
         }
       } catch {
         console.log(chalk.yellow("  ⚠ git pull failed — continuing with local state."));

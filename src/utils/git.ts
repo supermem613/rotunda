@@ -125,6 +125,15 @@ export async function gitCommitAndPush(
 }
 
 /**
+ * Detect git's "nothing was pulled" message. Modern git prints "Already up to
+ * date." while git before 2.34 printed "Already up-to-date." — both must count
+ * as a no-op so callers do not treat an idempotent pull as new changes.
+ */
+export function isGitPullNoOp(output: string): boolean {
+  return /already up[- ]to[- ]date/i.test(output);
+}
+
+/**
  * Pull the latest changes from the remote.
  * Returns true if new changes were pulled, false if already up to date.
  * Throws if the pull fails (e.g., merge conflicts).
@@ -132,7 +141,7 @@ export async function gitCommitAndPush(
 export async function gitPull(cwd: string): Promise<boolean> {
   const result = await git(["pull", "--ff-only"], cwd);
   const output = result.stdout + result.stderr;
-  return !output.includes("Already up to date");
+  return !isGitPullNoOp(output);
 }
 
 /**

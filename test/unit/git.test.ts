@@ -17,6 +17,7 @@ import {
   rewriteDiffPaths,
   type DiffSide,
   isPathIgnored,
+  isGitPullNoOp,
 } from "../../src/utils/git.js";
 
 const TMP = join(tmpdir(), "rotunda-git-test");
@@ -174,6 +175,21 @@ describe("gitPull", () => {
     execFileSync("git", ["commit", "-m", "init"], { cwd: standalone });
 
     await assert.rejects(() => gitPull(standalone));
+  });
+});
+
+describe("isGitPullNoOp", () => {
+  it("treats modern git 'Already up to date.' as a no-op", () => {
+    assert.equal(isGitPullNoOp("Already up to date."), true);
+  });
+
+  it("treats legacy git 'Already up-to-date.' as a no-op", () => {
+    assert.equal(isGitPullNoOp("Already up-to-date."), true);
+  });
+
+  it("reports changes when git fast-forwards", () => {
+    const output = "Updating abc1234..def5678\nFast-forward\n seed.txt | 1 +\n";
+    assert.equal(isGitPullNoOp(output), false);
   });
 });
 

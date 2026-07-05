@@ -45,7 +45,7 @@ export async function setCommand(
   }
 
   const { cwd } = loadRepoContext();
-  const backend = resolveBackend(cwd);
+  let backend = resolveBackend(cwd);
 
   await withLock(cwd, "set", async () => {
     if (await isGitRepo(cwd)) {
@@ -53,6 +53,9 @@ export async function setCommand(
         const pulled = await backend.pull(cwd);
         if (pulled) {
           console.log(chalk.dim("  ↓ Pulled latest from remote."));
+          // A pull can change the manifest's vcs field, so re-resolve the
+          // backend to publish through the backend the repo now declares.
+          backend = resolveBackend(cwd);
         }
       } catch {
         console.log(chalk.yellow("  ⚠ git pull failed — continuing with local state."));

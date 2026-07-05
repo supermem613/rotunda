@@ -13,7 +13,7 @@ import { planApply, executeApply, sweepAllConfiguredRoots } from "../sync/apply.
 export async function syncCommand(options: { yes?: boolean }): Promise<void> {
   const ctx = loadRepoContext();
   const cwd = ctx.cwd;
-  const backend = resolveBackend(cwd);
+  let backend = resolveBackend(cwd);
   let manifest = ctx.manifest;
 
   await withLock(cwd, "sync", async () => {
@@ -27,6 +27,9 @@ export async function syncCommand(options: { yes?: boolean }): Promise<void> {
           // manifest change would still use the pre-pull manifest, missing
           // any newly-mapped files until a second sync.
           manifest = loadManifest(cwd);
+          // A pull can also change the manifest's vcs field, so re-resolve the
+          // backend to publish through the backend the repo now declares.
+          backend = resolveBackend(cwd);
         }
       } catch {
         console.log(chalk.yellow("  ⚠ git pull failed — continuing with local state."));
