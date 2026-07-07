@@ -172,7 +172,7 @@ export class SodaBackend implements VcsBackend {
     }
 
     await this.sd(["change", changelist], cwd);
-    await this.sd(["reopen", "-c", changelist, ...relPaths], cwd);
+    await this.sd(["assign", "-c", changelist, ...relPaths], cwd);
     await this.sd(["submit", "-c", changelist, "-d", message], cwd);
     await this.sd(["push"], cwd);
   }

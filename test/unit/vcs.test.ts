@@ -214,7 +214,7 @@ describe("SodaBackend.publish", () => {
     assert.deepEqual(calls, [
       ["status"],
       ["change", "rotunda"],
-      ["reopen", "-c", "rotunda", "src/a.ts", "b.ts"],
+      ["assign", "-c", "rotunda", "src/a.ts", "b.ts"],
       ["submit", "-c", "rotunda", "-d", "msg"],
       ["push"],
     ]);
@@ -243,7 +243,7 @@ describe("SodaBackend.publish", () => {
     ], calls);
 
     await assert.rejects(() => new SodaBackend(runner).publish("/repo", ["src\\a.ts"], "msg"), /push failed|remote rejected/);
-    assert.deepEqual(calls, [["status"], ["change", "rotunda"], ["reopen", "-c", "rotunda", "src/a.ts"], ["submit", "-c", "rotunda", "-d", "msg"], ["push"]]);
+    assert.deepEqual(calls, [["status"], ["change", "rotunda"], ["assign", "-c", "rotunda", "src/a.ts"], ["submit", "-c", "rotunda", "-d", "msg"], ["push"]]);
   });
 });
 
