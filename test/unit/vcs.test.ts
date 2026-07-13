@@ -10,6 +10,10 @@ const TMP = join(tmpdir(), "rotunda-vcs-test");
 
 type MockEnvelope = { ok: true; data?: unknown } | { ok: false; error: string };
 
+function openedFile(path: string): { cl: string; action: string; path: string; type: string; auto: boolean } {
+  return { cl: "default", action: "edit", path, type: "text", auto: false };
+}
+
 function createMockRunner(responses: Array<MockEnvelope | Error>, calls: string[][]): SodaRunner {
   return async (args: string[]) => {
     calls.push([...args]);
@@ -202,7 +206,7 @@ describe("SodaBackend.publish", () => {
   it("runs the normal publish flow with the requested paths", async () => {
     const calls: string[][] = [];
     const runner = createMockRunner([
-      { ok: true, data: { summary: { opened: 2, ahead: 0 }, files: [] } },
+      { ok: true, data: { summary: { opened: 2, ahead: 0 }, files: [openedFile("src/a.ts"), openedFile("b.ts")] } },
       { ok: true, data: { summary: { opened: 2, ahead: 0 }, files: [] } },
       { ok: true, data: { summary: { opened: 2, ahead: 0 }, files: [] } },
       { ok: true, data: { summary: { opened: 2, ahead: 0 }, files: [] } },
@@ -220,6 +224,50 @@ describe("SodaBackend.publish", () => {
     ]);
   });
 
+  it("assigns only the paths soda actually opened, skipping no-op writes", async () => {
+    const calls: string[][] = [];
+    const runner = createMockRunner([
+      { ok: true, data: { summary: { opened: 1, ahead: 0 }, files: [openedFile("src/a.ts")] } },
+      { ok: true, data: { summary: { opened: 1, ahead: 0 }, files: [] } },
+      { ok: true, data: { summary: { opened: 1, ahead: 0 }, files: [] } },
+      { ok: true, data: { summary: { opened: 1, ahead: 0 }, files: [] } },
+      { ok: true, data: { summary: { opened: 1, ahead: 0 }, files: [] } },
+    ], calls);
+
+    await new SodaBackend(runner).publish("/repo", ["src\\a.ts", "skills\\noop.md"], "msg");
+
+    assert.deepEqual(calls, [
+      ["status"],
+      ["change", "rotunda"],
+      ["assign", "-c", "rotunda", "src/a.ts"],
+      ["submit", "-c", "rotunda", "-d", "msg"],
+      ["push"],
+    ]);
+  });
+
+  it("skips assign and submit when no rotunda path is opened, pushing when ahead", async () => {
+    const calls: string[][] = [];
+    const runner = createMockRunner([
+      { ok: true, data: { summary: { opened: 1, ahead: 1 }, files: [openedFile("someone/else.ts")] } },
+      { ok: true, data: { summary: { opened: 1, ahead: 1 }, files: [] } },
+    ], calls);
+
+    await new SodaBackend(runner).publish("/repo", ["skills\\noop.md"], "msg");
+
+    assert.deepEqual(calls, [["status"], ["push"]]);
+  });
+
+  it("does nothing when no rotunda path is opened and nothing is ahead", async () => {
+    const calls: string[][] = [];
+    const runner = createMockRunner([
+      { ok: true, data: { summary: { opened: 0, ahead: 0 }, files: [] } },
+    ], calls);
+
+    await new SodaBackend(runner).publish("/repo", ["skills\\noop.md"], "msg");
+
+    assert.deepEqual(calls, [["status"]]);
+  });
+
   it("recovers from a prior push by pushing only", async () => {
     const calls: string[][] = [];
     const runner = createMockRunner([
@@ -235,7 +283,7 @@ describe("SodaBackend.publish", () => {
   it("propagates push failures", async () => {
     const calls: string[][] = [];
     const runner = createMockRunner([
-      { ok: true, data: { summary: { opened: 2, ahead: 0 }, files: [] } },
+      { ok: true, data: { summary: { opened: 2, ahead: 0 }, files: [openedFile("src/a.ts")] } },
       { ok: true, data: { status: "created" } },
       { ok: true, data: { status: "moved" } },
       { ok: true, data: { status: "submitted" } },

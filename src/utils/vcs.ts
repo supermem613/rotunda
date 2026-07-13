@@ -36,12 +36,20 @@ interface SodaEnvelope<TData> {
   hint?: string;
 }
 
+interface SodaStatusFile {
+  cl: string;
+  action: string;
+  path: string;
+  type: string;
+  auto: boolean;
+}
+
 interface SodaStatusData {
   summary: {
     opened: number;
     ahead: number;
   };
-  files: string[];
+  files: SodaStatusFile[];
 }
 
 /**
@@ -163,11 +171,24 @@ export class SodaBackend implements VcsBackend {
 
   async publish(cwd: string, paths: string[], message: string): Promise<void> {
     const changelist = "rotunda";
-    const relPaths = paths.map((path) => path.replace(/\\/g, "/"));
     const status = await this.sd<SodaStatusData>(["status"], cwd);
 
-    if (status.summary.opened === 0 && status.summary.ahead > 0) {
-      await this.sd(["push"], cwd);
+    // soda opens only files whose content actually changed, so rotunda's
+    // intended-path list can name a file it rewrote to identical content.
+    // Passing such a literal path to assign throws "not opened on this
+    // client" and aborts the whole publish. Restrict the changelist to the
+    // intersection of rotunda's paths and the files soda actually opened.
+    // Scoping to rotunda's own paths instead of a blanket wildcard keeps any
+    // unrelated user edits in the worktree out of rotunda's submit.
+    const opened = new Set(status.files.map((file) => file.path));
+    const relPaths = paths.map((path) => path.replace(/\\/g, "/")).filter((path) => opened.has(path));
+
+    if (relPaths.length === 0) {
+      // Nothing rotunda changed is open for edit. Push any commits already
+      // staged ahead of the remote, otherwise there is nothing to publish.
+      if (status.summary.ahead > 0) {
+        await this.sd(["push"], cwd);
+      }
       return;
     }
 
