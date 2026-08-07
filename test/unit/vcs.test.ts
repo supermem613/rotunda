@@ -4,7 +4,16 @@ import { mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
-import { GitBackend, isSodaHookBlock, resolveBackend, resolveSelfUpdateBackend, sodaPreflight, SodaBackend, type SodaRunner } from "../../src/utils/vcs.js";
+import {
+  GitBackend,
+  isSodaHookBlock,
+  resolveBackend,
+  resolveSelfUpdateBackend,
+  sodaPreflight,
+  SodaBackend,
+  SODA_ASSIGN_ARGV_JOIN_BUDGET,
+  type SodaRunner,
+} from "../../src/utils/vcs.js";
 
 const TMP = join(tmpdir(), "rotunda-vcs-test");
 
@@ -292,6 +301,60 @@ describe("SodaBackend.publish", () => {
 
     await assert.rejects(() => new SodaBackend(runner).publish("/repo", ["src\\a.ts"], "msg"), /push failed|remote rejected/);
     assert.deepEqual(calls, [["status"], ["change", "rotunda"], ["assign", "-c", "rotunda", "src/a.ts"], ["submit", "-c", "rotunda", "-d", "msg"], ["push"]]);
+  });
+
+  it("batches assign so no single spawn argv exceeds the Windows cmdline budget", async () => {
+    const paths = Array.from({ length: 200 }, (_, i) =>
+      `.claude/skills/group-${String(i % 20).padStart(2, "0")}/nested/path/file-${String(i).padStart(3, "0")}-long-name.md`,
+    );
+    const singleAssignJoined = ["sd", "assign", "-c", "rotunda", ...paths].join(" ").length;
+    assert.ok(
+      singleAssignJoined > SODA_ASSIGN_ARGV_JOIN_BUDGET,
+      `fixture must exceed budget alone (got ${singleAssignJoined})`,
+    );
+
+    const calls: string[][] = [];
+    const runner: SodaRunner = async (args) => {
+      calls.push([...args]);
+      if (args[0] === "status") {
+        return {
+          stdout: JSON.stringify({
+            ok: true,
+            data: {
+              summary: { opened: paths.length, ahead: 0 },
+              files: paths.map((path) => openedFile(path)),
+            },
+          }),
+          stderr: "",
+        };
+      }
+      return { stdout: JSON.stringify({ ok: true, data: {} }), stderr: "" };
+    };
+
+    await new SodaBackend(runner).publish("/repo", paths, "msg");
+
+    const assignCalls = calls.filter((call) => call[0] === "assign");
+    assert.ok(
+      assignCalls.length >= 2,
+      `expected multiple assign batches for ${paths.length} paths, got ${assignCalls.length}`,
+    );
+
+    const assigned: string[] = [];
+    for (const call of assignCalls) {
+      assert.deepEqual(call.slice(0, 3), ["assign", "-c", "rotunda"]);
+      const joined = ["sd", ...call].join(" ").length;
+      assert.ok(
+        joined <= SODA_ASSIGN_ARGV_JOIN_BUDGET,
+        `assign argv joined length ${joined} exceeds budget ${SODA_ASSIGN_ARGV_JOIN_BUDGET}`,
+      );
+      assigned.push(...call.slice(3));
+    }
+
+    assert.deepEqual(assigned.slice().sort(), paths.slice().sort());
+    assert.deepEqual(
+      calls.filter((call) => call[0] !== "assign"),
+      [["status"], ["change", "rotunda"], ["submit", "-c", "rotunda", "-d", "msg"], ["push"]],
+    );
   });
 });
 

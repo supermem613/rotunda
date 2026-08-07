@@ -148,6 +148,48 @@ export class GitBackend implements VcsBackend {
   }
 }
 
+// Measured 2026-08-07 on Windows with the same cross-spawn("sd", args) path
+// SodaBackend uses: plain join of ["sd", ...args] first failed at joinedLen
+// 7748 (~70-char paths x 112) and 7868 (~110-char paths x 72). CreateProcess
+// ceiling is 8191; cmd quoting eats the rest. Budget sits under the observed
+// floor with headroom for special-character quoting.
+export const SODA_ASSIGN_ARGV_JOIN_BUDGET = 6000;
+
+/**
+ * Pack paths into greedy batches whose `sd ${args.join(" ")}` length stays at
+ * or under the Windows cmdline budget. Prefix is the fixed head of the argv
+ * (for example ["assign", "-c", "rotunda"]).
+ */
+export function batchPathsForArgvBudget(
+  prefix: readonly string[],
+  paths: readonly string[],
+  budget: number = SODA_ASSIGN_ARGV_JOIN_BUDGET,
+): string[][] {
+  if (paths.length === 0) {
+    return [];
+  }
+
+  const joinedLen = (batch: readonly string[]): number =>
+    ["sd", ...prefix, ...batch].join(" ").length;
+
+  const batches: string[][] = [];
+  let current: string[] = [];
+
+  for (const path of paths) {
+    const candidate = [...current, path];
+    if (current.length > 0 && joinedLen(candidate) > budget) {
+      batches.push(current);
+      current = [path];
+      continue;
+    }
+    current = candidate;
+  }
+  if (current.length > 0) {
+    batches.push(current);
+  }
+  return batches;
+}
+
 export class SodaBackend implements VcsBackend {
   constructor(private readonly run: SodaRunner = defaultSodaRunner) {}
 
@@ -193,7 +235,13 @@ export class SodaBackend implements VcsBackend {
     }
 
     await this.sd(["change", changelist], cwd);
-    await this.sd(["assign", "-c", changelist, ...relPaths], cwd);
+    // Windows CreateProcess / cmd.exe kill a single oversized assign spawn
+    // with "The command line is too long." Batch under the measured budget
+    // so large skill-tree syncs still land in one changelist submit.
+    const assignPrefix = ["assign", "-c", changelist] as const;
+    for (const batch of batchPathsForArgvBudget(assignPrefix, relPaths)) {
+      await this.sd([...assignPrefix, ...batch], cwd);
+    }
     await this.sd(["submit", "-c", changelist, "-d", message], cwd);
     await this.sd(["push"], cwd);
   }
