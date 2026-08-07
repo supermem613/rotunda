@@ -281,6 +281,8 @@ The optional `vcs` field selects how rotunda commits and pushes changes. It trav
 | `"git"` (default) | Stage the changed paths, commit, and push with git. Used when `vcs` is absent. |
 | `"soda"` | For [soda](https://github.com/supermem613/soda)-managed repos. Rotunda isolates only its changed paths into a dedicated soda changelist named `rotunda`, submits that changelist, and pushes with `sd`. The rest of your working set is never swept into the commit. |
 
+**Large path sets (Windows):** soda publish moves opened paths with `sd assign -c rotunda <paths...>`. On Windows, a single oversized assign spawn fails with `The command line is too long.` below the CreateProcess 8191 ceiling (measured fail floor joinedLen ~7748 / ~7868 on 2026-08-07). Rotunda batches assign under the exported `SODA_ASSIGN_ARGV_JOIN_BUDGET` (6000 join chars) and still uses one `change` / one `submit` / one `push` for the whole publish.
+
 **Auto-detection:** `rotunda bind` runs a soda preflight against the target repo. If the repo is soda-managed, bind writes `"vcs": "soda"` into `rotunda.json` for you, so you normally never set this field by hand.
 
 **Reads stay on git:** status and diff use plain git regardless of backend, because soda leaves the working tree as a normal git checkout. Pull uses the selected backend (`sd pull` for soda, `git pull` for git) so soda's stream state stays consistent.
