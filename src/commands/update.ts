@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isGitRepo } from "../utils/git.js";
-import { resolveSelfUpdateBackend } from "../utils/vcs.js";
+import { isSodaGitInterlockError, resolveSelfUpdateBackend, SodaBackend } from "../utils/vcs.js";
 import type { VcsBackend } from "../utils/vcs.js";
 
 const execAsync = promisify(exec);
@@ -40,7 +40,23 @@ export async function updateCommand(deps: UpdateDeps = {}): Promise<void> {
   let pulled = false;
   try {
     const backend = await resolve(repoRoot);
-    pulled = await backend.pull(repoRoot);
+    try {
+      pulled = await backend.pull(repoRoot);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!isSodaGitInterlockError(msg)) {
+        throw err;
+      }
+      const soda = new SodaBackend();
+      try {
+        pulled = await soda.pull(repoRoot);
+      } catch (sodaErr: unknown) {
+        const detail = sodaErr instanceof Error ? sodaErr.message : String(sodaErr);
+        throw new Error(
+          `Pull was blocked by soda interlock hooks, and sd pull failed. Put sd on PATH and rerun rotunda update. ${detail}`,
+        );
+      }
+    }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(chalk.red("  ✗ pull failed:") + ` ${msg}`);

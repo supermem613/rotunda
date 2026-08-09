@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import spawn from "cross-spawn";
 import { loadManifestDocument } from "../core/manifest.js";
@@ -263,20 +263,37 @@ export function resolveBackend(cwd: string): VcsBackend {
  * Backend selection for rotunda's own self-update (`rotunda update`).
  *
  * The rotunda install repo has no rotunda.json, so manifest-driven selection
- * does not apply. Instead we detect at runtime whether the install repo is
- * itself soda-managed and, if so, self-update through sd primitives so we do
- * not fight soda's git-interlock. `initialized === true` is the authoritative
- * signal: a plain git repo that the sd CLI can merely read reports false, and
- * anything that cannot answer (sd missing, not a repo) stays on git.
+ * does not apply. Detect soda via sd status OR local .sd workspace markers so a
+ * missing sd binary cannot be mistaken for a plain checkout. Callers that still
+ * land on git and hit soda interlock hooks should retry once with SodaBackend.
  */
 export async function resolveSelfUpdateBackend(
   cwd: string,
   run: SodaRunner = defaultSodaRunner,
+  hasMarkers: (dir: string) => boolean = hasSodaWorkspaceMarkers,
 ): Promise<VcsBackend> {
-  return (await isSodaManagedRepo(cwd, run)) ? new SodaBackend(run) : new GitBackend();
+  return (await isSodaManagedRepo(cwd, run, hasMarkers)) ? new SodaBackend(run) : new GitBackend();
 }
 
-async function isSodaManagedRepo(cwd: string, run: SodaRunner): Promise<boolean> {
+export function hasSodaWorkspaceMarkers(dir: string): boolean {
+  const workspaceDir = join(dir, ".sd");
+  const metaPath = join(workspaceDir, "meta.json");
+  const repoIdPath = join(workspaceDir, "repo-id");
+  if (!existsSync(metaPath) || !existsSync(repoIdPath)) {
+    return false;
+  }
+  try {
+    return readFileSync(repoIdPath, "utf8").trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+export function isSodaGitInterlockError(message: string): boolean {
+  return /sd-powered repo/i.test(message) || /raw git .* blocked/i.test(message);
+}
+
+async function probeSodaStatus(cwd: string, run: SodaRunner): Promise<boolean> {
   try {
     const result = await run(["status"], cwd);
     const envelope = JSON.parse(result.stdout) as SodaEnvelope<{
@@ -286,4 +303,12 @@ async function isSodaManagedRepo(cwd: string, run: SodaRunner): Promise<boolean>
   } catch {
     return false;
   }
+}
+
+export async function isSodaManagedRepo(
+  cwd: string,
+  run: SodaRunner = defaultSodaRunner,
+  hasMarkers: (dir: string) => boolean = hasSodaWorkspaceMarkers,
+): Promise<boolean> {
+  return (await probeSodaStatus(cwd, run)) || hasMarkers(cwd);
 }

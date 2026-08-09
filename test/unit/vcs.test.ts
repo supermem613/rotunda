@@ -12,6 +12,9 @@ import {
   sodaPreflight,
   SodaBackend,
   SODA_ASSIGN_ARGV_JOIN_BUDGET,
+  hasSodaWorkspaceMarkers,
+  isSodaGitInterlockError,
+  isSodaManagedRepo,
   type SodaRunner,
 } from "../../src/utils/vcs.js";
 
@@ -458,5 +461,28 @@ describe("GitBackend.pull", () => {
 
     const content = readFileSync(join(cloneB, "new-file.txt"), "utf-8");
     assert.equal(content.replace(/\r\n/g, "\n"), "from A\n");
+  });
+});
+
+describe("soda self-update detection hardening", () => {
+  it("treats local soda markers as managed even when status probe fails", async () => {
+    const backend = await resolveSelfUpdateBackend("repo", async () => {
+      throw new Error("spawn sd ENOENT");
+    }, () => true);
+    assert.ok(backend instanceof SodaBackend);
+  });
+
+  it("stays on git when status and markers are both negative", async () => {
+    const backend = await resolveSelfUpdateBackend("repo", async () => {
+      return { stdout: JSON.stringify({ ok: true, data: { summary: { initialized: false } } }), stderr: "" };
+    }, () => false);
+    assert.ok(backend instanceof GitBackend);
+  });
+
+  it("recognizes soda interlock text", () => {
+    assert.equal(
+      isSodaGitInterlockError("soda: raw git commit blocked in this sd-powered repo"),
+      true,
+    );
   });
 });
